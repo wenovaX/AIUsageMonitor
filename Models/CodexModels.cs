@@ -6,10 +6,10 @@ namespace AIUsageMonitor.Models;
 
 public class CodexAccount : INotifyPropertyChanged
 {
-	private string _accessToken = "";
-	private string _name = "";
-	private string _email = "";
-	private string _planType = "";
+	private string _accessToken = string.Empty;
+	private string _name = string.Empty;
+	private string _email = string.Empty;
+	private string _planType = string.Empty;
 	private double _credits;
 	private bool _isAnonymous;
 	private bool _hasCredits;
@@ -18,12 +18,12 @@ public class CodexAccount : INotifyPropertyChanged
 	// Primary window (the main usage gauge — often labeled "주간 사용 한도" on the site)
 	private int _primaryUsedPercent;
 	private string _primaryWindowLabel = "Usage Limit";
-	private string _primaryResetDescription = "";
+	private string _primaryResetDescription = string.Empty;
 
 	// Secondary window (longer cycle — often shows a reset date, not a gauge)
 	private int _secondaryUsedPercent;
 	private string _secondaryWindowLabel = "Reset Date";
-	private string _secondaryResetDate = "";
+	private string _secondaryResetDate = string.Empty;
 
 	public string id { get; set; } = Guid.NewGuid().ToString();
 
@@ -45,8 +45,8 @@ public class CodexAccount : INotifyPropertyChanged
 		set { _accessToken = value; OnPropertyChanged(); } 
 	}
 
-	public string refresh_token { get; set; } = "";
-	public string account_id { get; set; } = "";
+	public string refresh_token { get; set; } = string.Empty;
+	public string account_id { get; set; } = string.Empty;
 	public string login_method { get; set; } = "manual"; // "openai", "github", "manual"
 
 	public DateTime? last_updated { get; set; }
@@ -104,7 +104,10 @@ public class CodexAccount : INotifyPropertyChanged
 	public string secondaryWindowLabel 
 	{ 
 		get => _secondaryWindowLabel; 
-		set { _secondaryWindowLabel = value; OnPropertyChanged(); } 
+		set {
+            _secondaryWindowLabel = string.IsNullOrWhiteSpace(value) ? string.Empty : $"{value} ";
+			OnPropertyChanged(); 
+		} 
 	}
 
 	public string secondaryResetDate 

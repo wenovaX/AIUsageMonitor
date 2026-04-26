@@ -64,7 +64,9 @@ public class CodexAccountManagerService
             existing.primaryWindowLabel = account.primaryWindowLabel;
             existing.primaryResetDescription = account.primaryResetDescription;
             existing.secondaryUsedPercent = account.secondaryUsedPercent;
-            existing.secondaryWindowLabel = account.secondaryWindowLabel;
+            existing.secondaryWindowLabel = 
+                string.IsNullOrWhiteSpace(account.secondaryWindowLabel) ? 
+                string.Empty : $"{account.secondaryWindowLabel} ";
             existing.secondaryResetDate = account.secondaryResetDate;
             if (!string.IsNullOrEmpty(account.refresh_token))
                 existing.refresh_token = account.refresh_token;

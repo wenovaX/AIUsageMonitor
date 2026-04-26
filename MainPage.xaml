@@ -291,11 +291,11 @@
                                         <VerticalStackLayout BindableLayout.ItemsSource="{Binding GeminiQuotas}" Spacing="3">
                                             <BindableLayout.ItemTemplate>
                                                 <DataTemplate x:DataType="models:ModelQuotaInfo">
-                                                    <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
-                                                        <Grid>
-                                                            <ProgressBar Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}" 
-                                                                         ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}" 
-                                                                         BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                    <Border Padding="0" StrokeThickness="0" HeightRequest="26">
+                                                        <Grid BackgroundColor="{StaticResource Slate700}" VerticalOptions="Center">
+                                                            <ProgressBar ScaleY="6" Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}" 
+                                                                            ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}" 
+                                                                            BackgroundColor="Transparent" Opacity="0.4" />
                                                             <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
                                                                 <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
                                                                 <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="8" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
@@ -314,10 +314,10 @@
                                             <BindableLayout.ItemTemplate>
                                                 <DataTemplate x:DataType="models:ModelQuotaInfo">
                                                     <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
-                                                        <Grid>
-                                                            <ProgressBar Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}" 
+                                                        <Grid BackgroundColor="{StaticResource Slate700}"  VerticalOptions="Center">
+                                                            <ProgressBar ScaleY="6" Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}" 
                                                                          ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}" 
-                                                                         BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                                         BackgroundColor="Transparent" Opacity="0.4" />
                                                             <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
                                                                 <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
                                                                 <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="8" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
@@ -353,7 +353,7 @@
                     <BindableLayout.ItemTemplate>
 
                     <DataTemplate x:DataType="models:CodexAccount">
-                        <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" HeightRequest="250" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                        <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
                             <Border.Shadow><Shadow Brush="Black" Offset="0,6" Radius="15" Opacity="0.5" /></Border.Shadow>
                             <Grid RowDefinitions="Auto, *, Auto">
                                 <!-- Card Header -->
@@ -383,14 +383,14 @@
                                 </VerticalStackLayout>
                                 
                                 <!-- Usage Data (Middle Area) -->
-                                <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="8">
+                                <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="6">
                                     
                                     <!-- Primary Window (main usage gauge) -->
                                     <VerticalStackLayout Spacing="3">
                                         <Label Text="{Binding primaryWindowLabel}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
                                         <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
-                                            <Grid>
-                                                <ProgressBar Progress="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageConverter}}" 
+                                            <Grid BackgroundColor="{StaticResource Slate700}"  VerticalOptions="Center">
+                                                <ProgressBar ScaleY="6" Progress="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageConverter}}" 
                                                              ProgressColor="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageColorConverter}}" 
                                                              BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
                                                 <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
@@ -402,8 +402,8 @@
                                     </VerticalStackLayout>
 
                                     <!-- Secondary Window (reset date, not a gauge) -->
-                                    <Grid ColumnDefinitions="*, Auto" Padding="0,2,0,0">
-                                        <Label Text="{Binding secondaryWindowLabel, StringFormat='{0} RESET'}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" TextTransform="Uppercase" />
+                                    <Grid ColumnDefinitions="*, Auto" Padding="0">
+                                        <Label Text="{Binding secondaryWindowLabel, StringFormat='{0}RESET'}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" TextTransform="Uppercase" />
                                         <Label Grid.Column="1" Text="{Binding secondaryResetDate}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
                                     </Grid>
 

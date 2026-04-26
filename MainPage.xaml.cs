@@ -93,7 +93,7 @@ public partial class MainPage : ContentPage
         set { _isLoginWaiting = value; OnPropertyChanged(); }
     }
 
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.0.1";
     public string DisplayVersion => $"v{AppVersion}";
 
     private CancellationTokenSource? _loginCts;
@@ -553,13 +553,15 @@ public partial class MainPage : ContentPage
                 if (weeklyWindow != null)
                 {
                     account.secondaryUsedPercent = weeklyWindow.UsedPercent;
-                    account.secondaryWindowLabel = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
                     account.secondaryResetDate = CodexApiService.FormatResetDate(weeklyWindow.ResetAt);
+
+                    var secondaryText = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
+                    account.secondaryWindowLabel = string.IsNullOrWhiteSpace(secondaryText) ? string.Empty : $"{secondaryText} ";
                 }
                 else
                 {
-                    account.secondaryWindowLabel = "";
-                    account.secondaryResetDate = "";
+                    account.secondaryWindowLabel = string.Empty;
+                    account.secondaryResetDate = string.Empty;
                 }
 
                 if (usage.Credits != null)
