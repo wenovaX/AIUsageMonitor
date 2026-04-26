@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Token Radar logo">
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#14f1c6" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#2f8cff" flood-opacity="0.22"/>
+    </filter>
+    <linearGradient id="ring" x1="40" y1="40" x2="216" y2="216" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9feaff"/>
+      <stop offset="0.52" stop-color="#14f1c6"/>
+      <stop offset="1" stop-color="#ffb01f"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="#0f1726"/>
+  <circle cx="128" cy="128" r="76" fill="none" stroke="#24344f" stroke-width="10"/>
+  <circle cx="128" cy="128" r="76" fill="none" stroke="url(#ring)" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="210 270" transform="rotate(-36 128 128)" filter="url(#glow)"/>
+  <circle cx="128" cy="128" r="46" fill="none" stroke="#324764" stroke-width="4" stroke-dasharray="8 10" opacity="0.85"/>
+  <path d="M128 128 L180 94" stroke="#14f1c6" stroke-width="8" stroke-linecap="round" filter="url(#glow)"/>
+  <circle cx="128" cy="128" r="11" fill="#eaf7ff"/>
+  <circle cx="180" cy="94" r="8" fill="#ffb01f"/>
+  <path d="M73 169h110" stroke="#14f1c6" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+  <path d="M88 187h80" stroke="#2f8cff" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+</svg>

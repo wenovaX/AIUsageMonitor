@@ -1,0 +1,625 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:AIUsageMonitor.Models"
+             xmlns:converters="clr-namespace:AIUsageMonitor.Converters"
+             x:Class="AIUsageMonitor.MainPage"
+             BackgroundColor="#0f172a"
+             Title="">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <Color x:Key="Slate50">#f8fafc</Color>
+            <Color x:Key="Slate100">#f1f5f9</Color>
+            <Color x:Key="Slate400">#94a3b8</Color>
+            <Color x:Key="Slate500">#64748b</Color>
+            <Color x:Key="Slate600">#475569</Color>
+            <Color x:Key="Slate700">#334155</Color>
+            <Color x:Key="Slate800">#1e293b</Color>
+            <Color x:Key="Slate900">#0f172a</Color>
+            
+            <converters:PercentageConverter x:Key="PercentageConverter" />
+            <converters:PercentageColorConverter x:Key="PercentageColorConverter" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <converters:AnonymousAvatarConverter x:Key="AnonymousAvatarConverter" />
+            
+            <Color x:Key="Emerald500">#10b981</Color>
+            <Color x:Key="Amber500">#f59e0b</Color>
+            <Color x:Key="Rose500">#ef4444</Color>
+            <Color x:Key="Sky400">#60a5fa</Color>
+
+            <!-- Sidebar Tab Style -->
+            <Style x:Key="TabStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="Padding" Value="0,15" />
+                <Setter Property="HorizontalOptions" Value="Fill" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Slate800}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Global Button Style -->
+            <Style TargetType="Button">
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Slate600}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Icon Button Style -->
+            <Style x:Key="IconButtonStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="WidthRequest" Value="32" />
+                <Setter Property="HeightRequest" Value="32" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Slate700}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Utility Button Style -->
+            <Style x:Key="UtilityButtonStyle" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{StaticResource Slate700}" />
+                <Setter Property="TextColor" Value="{StaticResource Slate100}" />
+                <Setter Property="FontSize" Value="10" />
+                <Setter Property="HeightRequest" Value="32" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource Slate600}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Remove Button Specific Style -->
+            <Style x:Key="RemoveButtonStyle" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="{StaticResource Rose500}" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#1aef4444" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid ColumnDefinitions="80, *">
+        <!-- LEFT SIDE TRAY MENU -->
+        <Border Grid.Column="0" BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}">
+            <Grid RowDefinitions="*, Auto">
+                <VerticalStackLayout Spacing="0" Padding="0,30">
+                    <Border Style="{StaticResource TabStyle}" AutomationId="Google">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnTabClicked" /></Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="5" HorizontalOptions="Center">
+                            <Label Text="G" FontSize="24" FontAttributes="Bold" TextColor="{Binding IsGoogleTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Emerald500}}" HorizontalOptions="Center" />
+                            <Label Text="Antigravity" FontSize="9" FontAttributes="Bold" TextColor="{Binding IsGoogleTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Slate50}}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="2" WidthRequest="20" BackgroundColor="{StaticResource Emerald500}" IsVisible="{Binding IsGoogleTab}" HorizontalOptions="Center" Margin="0,5,0,0" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource TabStyle}" AutomationId="Codex" Margin="0,10,0,0">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnTabClicked" /></Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="5" HorizontalOptions="Center">
+                            <Label Text="C" FontSize="24" FontAttributes="Bold" TextColor="{Binding IsCodexTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Emerald500}}" HorizontalOptions="Center" />
+                            <Label Text="Codex" FontSize="9" FontAttributes="Bold" TextColor="{Binding IsCodexTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Slate50}}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="2" WidthRequest="20" BackgroundColor="{StaticResource Emerald500}" IsVisible="{Binding IsCodexTab}" HorizontalOptions="Center" Margin="0,5,0,0" />
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Grid.Row="1" Spacing="0" VerticalOptions="End" Margin="0,0,0,10">
+                    <!-- Settings Button -->
+                    <Border Style="{StaticResource TabStyle}" AutomationId="Settings" Padding="0,12">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnTabClicked" /></Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                            <Label Text="⚙" FontSize="20" FontAttributes="Bold" TextColor="{Binding IsSettingsTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Emerald500}}" HorizontalOptions="Center" />
+                            <Label Text="Settings" FontSize="9" FontAttributes="Bold" TextColor="{Binding IsSettingsTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Slate50}}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="2" WidthRequest="20" BackgroundColor="{StaticResource Emerald500}" IsVisible="{Binding IsSettingsTab}" HorizontalOptions="Center" Margin="0,3,0,0" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- About Button -->
+                    <Border Style="{StaticResource TabStyle}" AutomationId="About" Padding="0,12">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnTabClicked" /></Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                            <Label Text="?" FontSize="20" FontAttributes="Bold" TextColor="{Binding IsAboutTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Emerald500}}" HorizontalOptions="Center" />
+                            <Label Text="About" FontSize="9" FontAttributes="Bold" TextColor="{Binding IsAboutTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Slate50}}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="2" WidthRequest="20" BackgroundColor="{StaticResource Emerald500}" IsVisible="{Binding IsAboutTab}" HorizontalOptions="Center" Margin="0,3,0,0" />
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+            </Grid>
+        </Border>
+
+        <!-- MAIN CONTENT AREA -->
+        <Grid Grid.Column="1" RowDefinitions="Auto, Auto, *">
+            <!-- Header -->
+            <Border Padding="25,15" BackgroundColor="{StaticResource Slate800}" StrokeThickness="0">
+                <Border.Shadow><Shadow Brush="Black" Offset="0,2" Radius="5" Opacity="0.2" /></Border.Shadow>
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <Image Source="app_title.png" HeightRequest="50" Scale="2" AnchorX="0" AnchorY="0.5" VerticalOptions="Center" HorizontalOptions="Start" Aspect="AspectFit" Margin="-10,0,0,0" />
+                    
+                    <HorizontalStackLayout Grid.Column="2" Spacing="12" VerticalOptions="Center">
+                        <HorizontalStackLayout Spacing="8" VerticalOptions="Center" Margin="0,0,15,0">
+                            <Label Text="Anonymous" FontSize="10" VerticalOptions="Center" TextColor="{StaticResource Slate400}" />
+                            <Border Padding="2" BackgroundColor="{StaticResource Slate900}" StrokeShape="RoundRectangle 11" WidthRequest="40" HeightRequest="22">
+                                <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnAnonymousToggleClicked" /></Border.GestureRecognizers>
+                                <Grid>
+                                    <BoxView HorizontalOptions="{Binding ToggleKnobHorizontalOptions}" 
+                                             WidthRequest="18" HeightRequest="18" CornerRadius="9" 
+                                             Color="{Binding ToggleColor}" />
+                                </Grid>
+                            </Border>
+                        </HorizontalStackLayout>
+
+                        <Button Text="Export" Clicked="OnExportClicked" Style="{StaticResource UtilityButtonStyle}" />
+                        <Button Text="Import" Clicked="OnImportClicked" Style="{StaticResource UtilityButtonStyle}" />
+                        <Button Text="+ Add Account" Clicked="OnLoginClicked" BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" CornerRadius="6" HeightRequest="34" Padding="18,0" FontSize="12" />
+                        
+                        <Border Style="{StaticResource IconButtonStyle}" WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 18">
+                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshAllClicked" /></Border.GestureRecognizers>
+                            <Label Text="↻" TextColor="{StaticResource Slate100}" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,0,0,2" />
+                        </Border>
+                    </HorizontalStackLayout>
+                </Grid>
+            </Border>
+
+            <!-- Stats Board -->
+            <Border Grid.Row="1" BackgroundColor="{StaticResource Slate900}" Padding="20,12" StrokeThickness="1" Stroke="{StaticResource Slate700}">
+                <HorizontalStackLayout Spacing="40" HorizontalOptions="Center">
+                    <VerticalStackLayout>
+                        <Label Text="ACTIONS" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" HorizontalOptions="Center" />
+                        <Label Text="{Binding GlobalActions}" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource Slate50}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                    <VerticalStackLayout>
+                        <Label Text="ACTIVE" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" HorizontalOptions="Center" />
+                        <Label Text="{Binding GlobalActive}" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                    <VerticalStackLayout>
+                        <Label Text="RATE LIMITED" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" HorizontalOptions="Center" />
+                        <Label Text="{Binding GlobalLimited}" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource Rose500}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                    <VerticalStackLayout WidthRequest="120">
+                        <Label Text="GLOBAL QUOTA" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" HorizontalOptions="Center" />
+                        <Label Text="{Binding GlobalQuota, StringFormat='{0}%'}" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" />
+                        <ProgressBar Progress="{Binding GlobalQuota, Converter={StaticResource PercentageConverter}}" HeightRequest="2" ProgressColor="{Binding GlobalQuota, Converter={StaticResource PercentageColorConverter}}" />
+                    </VerticalStackLayout>
+                </HorizontalStackLayout>
+            </Border>
+
+            <!-- TAB CONTENT: GOOGLE -->
+            <ScrollView Grid.Row="2" Padding="20" IsVisible="{Binding IsGoogleTab}">
+                <FlexLayout BindableLayout.ItemsSource="{Binding Accounts}" 
+                            Wrap="Wrap" 
+                            JustifyContent="Start" 
+                            AlignItems="Start"
+                            AlignContent="Start">
+                    <BindableLayout.ItemTemplate>
+
+                    <DataTemplate x:DataType="models:CloudAccount">
+                        <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" HeightRequest="320" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                            <Border.Shadow><Shadow Brush="Black" Offset="0,6" Radius="15" Opacity="0.5" /></Border.Shadow>
+                            <Grid RowDefinitions="Auto, *, Auto">
+                                <!-- Card Header -->
+                                <VerticalStackLayout>
+                                    <!-- Avatar and Email -->
+                                    <Grid ColumnDefinitions="30, *" Padding="14,12">
+                                        <Grid>
+                                            <Border IsVisible="{Binding IsAnonymous, Converter={StaticResource InverseBoolConverter}}" HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" StrokeThickness="0">
+                                                <Image Source="{Binding avatar_url}" Aspect="AspectFill" />
+                                            </Border>
+                                            <Border IsVisible="{Binding IsAnonymous}" HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" BackgroundColor="{StaticResource Slate700}">
+                                                <Label Text="{Binding email, Converter={StaticResource AnonymousAvatarConverter}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" />
+                                            </Border>
+                                        </Grid>
+                                        <VerticalStackLayout Grid.Column="1" Margin="10,0,0,0" VerticalOptions="Center">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="12" TextColor="{StaticResource Slate50}" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding DisplayEmail}" FontSize="9" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                    
+                                    <!-- Actions & Credits -->
+                                    <Grid ColumnDefinitions="Auto, *, Auto" Padding="14,0" BackgroundColor="{StaticResource Slate900}">
+                                        <HorizontalStackLayout Grid.Column="0" Spacing="0" VerticalOptions="Center">
+                                            <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4">
+                                                <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnToggleSettingsTapped" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                <Label Text="⚙" TextColor="{StaticResource Slate400}" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                            
+                                            <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4">
+                                                <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshAccountClicked" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                <Label Text="↻" TextColor="{StaticResource Slate400}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                        </HorizontalStackLayout>
+                                        
+                                        <Label Grid.Column="2" Text="{Binding credits, StringFormat='${0:F2}'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                                
+                                <!-- Quotas (Middle Area) -->
+                                <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="8">
+                                    <VerticalStackLayout Spacing="5" IsVisible="{Binding HasGeminiQuotas}">
+                                        <Label Text="Gemini" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding GeminiQuotas}" Spacing="3">
+                                            <BindableLayout.ItemTemplate>
+                                                <DataTemplate x:DataType="models:ModelQuotaInfo">
+                                                    <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
+                                                        <Grid>
+                                                            <ProgressBar Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}" 
+                                                                         ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}" 
+                                                                         BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                            <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                                <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                                                <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="8" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                                <Label Grid.Column="2" Text="{Binding percentage, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </BindableLayout.ItemTemplate>
+                                        </VerticalStackLayout>
+                                    </VerticalStackLayout>
+
+                                    <VerticalStackLayout Spacing="5" IsVisible="{Binding HasClaudeQuotas}">
+                                        <Label Text="Claude" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding ClaudeQuotas}" Spacing="3">
+                                            <BindableLayout.ItemTemplate>
+                                                <DataTemplate x:DataType="models:ModelQuotaInfo">
+                                                    <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
+                                                        <Grid>
+                                                            <ProgressBar Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}" 
+                                                                         ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}" 
+                                                                         BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                            <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                                <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                                                <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="8" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                                <Label Grid.Column="2" Text="{Binding percentage, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </BindableLayout.ItemTemplate>
+                                        </VerticalStackLayout>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+                                
+                                <!-- Bottom Button (Stuck to bottom) -->
+                                <Button Grid.Row="2" Text="REMOVE ACCOUNT" Clicked="OnDeleteAccountClicked" CommandParameter="{Binding id}" 
+                                        Style="{StaticResource RemoveButtonStyle}" 
+                                        FontSize="9" CharacterSpacing="1.2" HorizontalOptions="Fill" HeightRequest="36" Padding="0" 
+                                        CornerRadius="0" BorderWidth="0" VerticalOptions="End" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+            </ScrollView>
+
+            <!-- TAB CONTENT: CODEX -->
+            <ScrollView Grid.Row="2" Padding="20" IsVisible="{Binding IsCodexTab}">
+                <FlexLayout BindableLayout.ItemsSource="{Binding CodexAccounts}" 
+                            Wrap="Wrap" 
+                            JustifyContent="Start" 
+                            AlignItems="Start"
+                            AlignContent="Start">
+                    <BindableLayout.ItemTemplate>
+
+                    <DataTemplate x:DataType="models:CodexAccount">
+                        <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" HeightRequest="250" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                            <Border.Shadow><Shadow Brush="Black" Offset="0,6" Radius="15" Opacity="0.5" /></Border.Shadow>
+                            <Grid RowDefinitions="Auto, *, Auto">
+                                <!-- Card Header -->
+                                <VerticalStackLayout>
+                                    <!-- Avatar and Name/Email -->
+                                    <Grid ColumnDefinitions="30, *" Padding="14,12">
+                                        <Border HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" BackgroundColor="{StaticResource Slate700}">
+                                            <Label Text="{Binding DisplayName, Converter={StaticResource AnonymousAvatarConverter}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" />
+                                        </Border>
+                                        <VerticalStackLayout Grid.Column="1" Margin="10,0,0,0" VerticalOptions="Center">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="12" TextColor="{StaticResource Slate50}" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding DisplayEmail}" FontSize="9" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                    
+                                    <!-- Actions & Plan -->
+                                    <Grid ColumnDefinitions="Auto, *, Auto" Padding="14,0" BackgroundColor="{StaticResource Slate900}">
+                                        <HorizontalStackLayout Grid.Column="0" Spacing="0" VerticalOptions="Center">
+                                            <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4">
+                                                <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshCodexAccountClicked" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                <Label Text="↻" TextColor="{StaticResource Slate400}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                        </HorizontalStackLayout>
+                                        
+                                        <Label Grid.Column="2" Text="{Binding PlanDisplay}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                                
+                                <!-- Usage Data (Middle Area) -->
+                                <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="8">
+                                    
+                                    <!-- Primary Window (main usage gauge) -->
+                                    <VerticalStackLayout Spacing="3">
+                                        <Label Text="{Binding primaryWindowLabel}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
+                                            <Grid>
+                                                <ProgressBar Progress="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageConverter}}" 
+                                                             ProgressColor="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageColorConverter}}" 
+                                                             BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                    <Label Text="{Binding primaryResetDescription, StringFormat='Resets: {0}'}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                    <Label Grid.Column="2" Text="{Binding PrimaryRemainingPercent, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                    </VerticalStackLayout>
+
+                                    <!-- Secondary Window (reset date, not a gauge) -->
+                                    <Grid ColumnDefinitions="*, Auto" Padding="0,2,0,0">
+                                        <Label Text="{Binding secondaryWindowLabel, StringFormat='{0} RESET'}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" TextTransform="Uppercase" />
+                                        <Label Grid.Column="1" Text="{Binding secondaryResetDate}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <!-- Credits -->
+                                    <Grid ColumnDefinitions="*, Auto" Padding="0,4,0,0">
+                                        <Label Text="CREDITS" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding CreditsDisplay}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                                
+                                <!-- Bottom Button -->
+                                <Button Grid.Row="2" Text="REMOVE ACCOUNT" Clicked="OnDeleteCodexAccountClicked" CommandParameter="{Binding id}" 
+                                        Style="{StaticResource RemoveButtonStyle}" 
+                                        FontSize="9" CharacterSpacing="1.2" HorizontalOptions="Fill" HeightRequest="36" Padding="0" 
+                                        CornerRadius="0" BorderWidth="0" VerticalOptions="End" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+            </ScrollView>
+
+            <!-- SETTINGS PANEL -->
+            <ScrollView Grid.Row="2" IsVisible="{Binding IsSettingsTab}" Padding="20">
+                <VerticalStackLayout Spacing="25" MaximumWidthRequest="800" HorizontalOptions="Start">
+                    <!-- Title -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Model Keywords &amp; Filters" FontSize="28" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                        <Label Text="Configure which models to track and how they appear in the UI." FontSize="13" TextColor="{StaticResource Slate400}" />
+                    </VerticalStackLayout>
+
+                    <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" />
+
+                    <!-- Model List -->
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="TRACKED MODELS" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
+                        
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding FilterEntries}" Spacing="10">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15,10">
+                                        <Grid ColumnDefinitions="40, *, *, 120">
+                                            <!-- Toggle -->
+                                            <CheckBox IsChecked="{Binding Enabled}" Color="{StaticResource Emerald500}" VerticalOptions="Center" HorizontalOptions="Start" />
+                                            
+                                            <!-- Keyword -->
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="10,0">
+                                                <Label Text="KEYWORD" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                                                <Entry Text="{Binding Keyword}" FontSize="13" TextColor="{StaticResource Slate100}" BackgroundColor="Transparent" Placeholder="e.g. gemini" />
+                                            </VerticalStackLayout>
+
+                                            <!-- Display Name -->
+                                            <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Margin="10,0">
+                                                <Label Text="DISPLAY NAME" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                                                <Entry Text="{Binding DisplayName}" FontSize="13" TextColor="{StaticResource Slate100}" BackgroundColor="Transparent" Placeholder="e.g. Gemini Pro" />
+                                            </VerticalStackLayout>
+
+                                            <!-- Actions -->
+                                            <HorizontalStackLayout Grid.Column="3" Spacing="5" HorizontalOptions="End" VerticalOptions="Center">
+                                                <Button Text="↑" Clicked="OnMoveUpClicked" CommandParameter="{Binding .}" WidthRequest="32" HeightRequest="32" Padding="0" BackgroundColor="{StaticResource Slate700}" />
+                                                <Button Text="↓" Clicked="OnMoveDownClicked" CommandParameter="{Binding .}" WidthRequest="32" HeightRequest="32" Padding="0" BackgroundColor="{StaticResource Slate700}" />
+                                                <Button Text="✕" Clicked="OnRemoveFilterClicked" CommandParameter="{Binding .}" WidthRequest="32" HeightRequest="32" Padding="0" BackgroundColor="{StaticResource Rose500}" />
+                                            </HorizontalStackLayout>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <!-- Add New -->
+                    <Border BackgroundColor="{StaticResource Slate900}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="20">
+                        <Grid ColumnDefinitions="*, *, Auto" ColumnSpacing="15">
+                            <VerticalStackLayout>
+                                <Label Text="NEW KEYWORD" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                                <Entry x:Name="NewKeywordEntry" Placeholder="Keyword..." FontSize="14" TextColor="{StaticResource Slate100}" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Column="1">
+                                <Label Text="NEW DISPLAY NAME" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                                <Entry x:Name="NewDisplayNameEntry" Placeholder="Display Name..." FontSize="14" TextColor="{StaticResource Slate100}" />
+                            </VerticalStackLayout>
+                            <Button Grid.Column="2" Text="ADD MODEL" Clicked="OnAddFilterClicked" VerticalOptions="End" BackgroundColor="{StaticResource Emerald500}" HeightRequest="45" Padding="20,0" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Footer Actions -->
+                    <HorizontalStackLayout Spacing="15" Margin="0,10,0,50">
+                        <Button Text="SAVE CONFIGURATION" Clicked="OnSaveSettingsClicked" BackgroundColor="{StaticResource Sky400}" Padding="25,0" HeightRequest="45" />
+                        <Button Text="RESET TO DEFAULTS" Clicked="OnResetSettingsClicked" BackgroundColor="{StaticResource Slate700}" Padding="25,0" HeightRequest="45" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+
+            <!-- ABOUT PANEL -->
+            <ScrollView Grid.Row="2" IsVisible="{Binding IsAboutTab}" Padding="20">
+                <VerticalStackLayout Spacing="20" MaximumWidthRequest="600" HorizontalOptions="Start">
+                    <!-- Title -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Token Radar" FontSize="28" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                        <Label Text="AI Usage Monitor v1.0" FontSize="12" TextColor="{StaticResource Slate500}" />
+                    </VerticalStackLayout>
+
+                    <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" />
+
+                    <!-- Getting Started -->
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="GETTING STARTED" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
+                        <Label Text="Before using this app, you need to authorize your accounts via their respective services." 
+                               FontSize="13" TextColor="{StaticResource Slate400}" LineHeight="1.5" />
+                    </VerticalStackLayout>
+
+                    <!-- Antigravity Setup -->
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="16">
+                        <VerticalStackLayout Spacing="8">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="G" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                <Label Text="Antigravity (Google)" FontSize="15" FontAttributes="Bold" TextColor="{StaticResource Slate100}" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                            <Label FontSize="12" TextColor="{StaticResource Slate400}" LineHeight="1.5"
+                                   Text="1. Install Antigravity extension in your IDE (VS Code, JetBrains)&#10;2. Sign in with your Google account in the IDE&#10;3. Come back here and click (+) to add your Google account" />
+                            <Label Text="Tracks: Gemini 3 Flash, Gemini 3.1 Pro (High/Low), Claude Opus/Sonnet, GPT-OSS" 
+                                   FontSize="10" TextColor="{StaticResource Slate500}" FontAttributes="Italic" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Codex Setup -->
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="16">
+                        <VerticalStackLayout Spacing="8">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="C" FontSize="18" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                <Label Text="Codex (OpenAI)" FontSize="15" FontAttributes="Bold" TextColor="{StaticResource Slate100}" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                            <Label FontSize="12" TextColor="{StaticResource Slate400}" LineHeight="1.5"
+                                   Text="1. Sign up or log in at OpenAI Codex&#10;2. Come back here, switch to the Codex tab, and click (+)&#10;3. Choose 'OpenAI Login' to authorize via browser&#10;4. Alternatively, use 'GitHub Login' if you use GitHub Copilot" />
+                            <HorizontalStackLayout Spacing="4" Margin="0,4,0,0">
+                                <Label Text="→" FontSize="12" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                <Label Text="https://openai.com/codex" FontSize="11" TextColor="{StaticResource Sky400}" TextDecorations="Underline" VerticalOptions="Center">
+                                    <Label.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnOpenCodexSiteClicked" />
+                                    </Label.GestureRecognizers>
+                                </Label>
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Notes -->
+                    <Border BackgroundColor="#1a60a5fa" StrokeShape="RoundRectangle 8" StrokeThickness="0" Padding="14">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="💡 Tips" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Sky400}" />
+                            <Label FontSize="11" TextColor="{StaticResource Slate400}" LineHeight="1.5"
+                                   Text="• Use the Anonymous toggle to hide personal info&#10;• Click ↻ on any account card to manually refresh&#10;• If login gets stuck, use the Cancel button to abort&#10;• Data is saved locally — no external server involved" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Label Text="Made with ❤️ for AI power users" FontSize="10" TextColor="{StaticResource Slate600}" HorizontalOptions="Center" Margin="0,10,0,30" />
+                </VerticalStackLayout>
+            </ScrollView>
+
+            <!-- SHARED Visibility Overlay -->
+            <Grid Grid.RowSpan="3" BackgroundColor="#990f172a" IsVisible="{Binding IsSettingsPanelOpen}">
+                <Grid.GestureRecognizers><TapGestureRecognizer Tapped="OnCloseSettingsClicked" /></Grid.GestureRecognizers>
+                <Border WidthRequest="320" BackgroundColor="{StaticResource Slate800}" Padding="25" StrokeShape="RoundRectangle 15" StrokeThickness="1" Stroke="{StaticResource Slate700}" VerticalOptions="Center" HorizontalOptions="Center">
+                    <Border.GestureRecognizers><TapGestureRecognizer /></Border.GestureRecognizers>
+                    <VerticalStackLayout Spacing="20" BindingContext="{Binding SelectedAccount}">
+                        <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
+                            <Border HeightRequest="36" WidthRequest="36" StrokeShape="RoundRectangle 18" StrokeThickness="0">
+                                <Image Source="{Binding avatar_url}" Aspect="AspectFill" />
+                            </Border>
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <Label Text="{Binding name}" FontAttributes="Bold" FontSize="14" TextColor="{StaticResource Slate50}" />
+                                <Label Text="MODEL VISIBILITY" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                            </VerticalStackLayout>
+                        </HorizontalStackLayout>
+
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding VisibilityItems}" Spacing="6">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="models:ModelVisibilityItem">
+                                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="15" Padding="0,6">
+                                        <CheckBox IsChecked="{Binding IsVisible}" Color="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding DisplayName}" FontSize="11" TextColor="{StaticResource Slate50}" VerticalOptions="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+
+                        <Button Text="Save &amp; Close" Clicked="OnCloseSettingsClicked" 
+                                BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" 
+                                FontSize="12" HeightRequest="40" CornerRadius="10" Margin="0,15,0,0" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+
+            <!-- Loading Overlay -->
+            <Grid Grid.RowSpan="3" BackgroundColor="#990f172a" IsVisible="{Binding IsRefreshing}">
+                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="20">
+                    <ActivityIndicator IsRunning="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="60" HeightRequest="60" />
+                    <Label Text="Updating Quotas..." TextColor="{StaticResource Slate100}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" IsVisible="{Binding ShowRetryButton, Converter={StaticResource InverseBoolConverter}}" />
+                    
+                    <!-- Retry State -->
+                    <Label Text="Request timed out after 3 attempts." TextColor="{StaticResource Rose500}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" IsVisible="{Binding ShowRetryButton}" />
+                    <HorizontalStackLayout Spacing="12" HorizontalOptions="Center" IsVisible="{Binding ShowRetryButton}">
+                        <Button Text="Retry" Clicked="OnRetryClicked" BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" CornerRadius="8" HeightRequest="36" Padding="24,0" FontSize="12" FontAttributes="Bold" />
+                        <Button Text="Cancel" Clicked="OnCancelRefreshClicked" BackgroundColor="{StaticResource Slate700}" TextColor="{StaticResource Slate100}" CornerRadius="8" HeightRequest="36" Padding="24,0" FontSize="12" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Grid>
+            <!-- Login Waiting Overlay -->
+            <Grid Grid.RowSpan="3" BackgroundColor="#CC0f172a" IsVisible="{Binding IsLoginWaiting}">
+                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="16">
+                    <ActivityIndicator IsRunning="{Binding IsLoginWaiting}" Color="{StaticResource Sky400}" WidthRequest="50" HeightRequest="50" />
+                    <Label Text="Waiting for browser login..." TextColor="{StaticResource Slate100}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                    <Label Text="Complete the login in your browser to continue." TextColor="{StaticResource Slate400}" FontSize="12" HorizontalOptions="Center" />
+                    <Button Text="Cancel Login" Clicked="OnCancelLoginClicked" 
+                            BackgroundColor="{StaticResource Slate700}" TextColor="{StaticResource Slate100}" 
+                            CornerRadius="8" HeightRequest="40" Padding="32,0" FontSize="13" FontAttributes="Bold" Margin="0,8,0,0" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <ProgressBar Grid.RowSpan="3" IsVisible="{Binding IsBusy}" Progress="0.5" VerticalOptions="Start" HeightRequest="2" ProgressColor="{StaticResource Emerald500}" BackgroundColor="Transparent" />
+        </Grid>
+    </Grid>
+</ContentPage>
