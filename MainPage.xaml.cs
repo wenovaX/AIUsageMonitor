@@ -1,7 +1,6 @@
 using AIUsageMonitor.Models;
 using AIUsageMonitor.PlatformAbstractions;
 using AIUsageMonitor.Services;
-using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -159,14 +158,12 @@ public partial class MainPage : ContentPage
         _googleRadar = new GoogleRadarService(_modelFilterService);
         InitializeComponent();
         BindingContext = this;
-        Loaded += OnLoaded;
         HandlerChanged += OnHandlerChanged;
+        Unloaded += OnUnloaded;
         
         ShowAppCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
         ExitAppCommand = new Command(() => OnExitAppFromTray(null, EventArgs.Empty));
         DoubleClickTrayIconCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
-
-        _platformManager.Current.WindowVisibilityChanged += OnPlatformWindowVisibilityChanged;
 
         _ = RefreshAllAccounts(RefreshQueueLevel.Background);
     }
@@ -175,14 +172,9 @@ public partial class MainPage : ContentPage
     public ICommand ExitAppCommand { get; }
     public ICommand DoubleClickTrayIconCommand { get; }
 
-    private void OnLoaded(object? sender, EventArgs e)
-    {
-        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
-    }
-
     private void OnHandlerChanged(object? sender, EventArgs e)
     {
-        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
+        ConfigurePlatformUi();
 #if WINDOWS
         AttachRefreshKeyboardShortcut();
 #endif
@@ -201,10 +193,29 @@ public partial class MainPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
+        ConfigurePlatformUi();
 #if WINDOWS
         AttachRefreshKeyboardShortcut();
 #endif
+    }
+
+    private void OnUnloaded(object? sender, EventArgs e)
+    {
+        _platformManager.Current.WindowVisibilityChanged -= OnPlatformWindowVisibilityChanged;
+#if WINDOWS
+        if (_platformWindow?.Content is UIElement rootElement)
+        {
+            rootElement.KeyDown -= OnWindowKeyDown;
+        }
+        _platformWindow = null;
+#endif
+    }
+
+    private void ConfigurePlatformUi()
+    {
+        _platformManager.Current.WindowVisibilityChanged -= OnPlatformWindowVisibilityChanged;
+        _platformManager.Current.WindowVisibilityChanged += OnPlatformWindowVisibilityChanged;
+        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
     }
 
     private void OnShowAppFromTray(object? sender, EventArgs e)
@@ -233,14 +244,12 @@ public partial class MainPage : ContentPage
 
     private void OnTabClicked(object? sender, EventArgs e)
     {
-        if (sender is Border border && border.GestureRecognizers[0] is TapGestureRecognizer tap)
+        if (sender is Border border)
         {
-            var tab = border.AutomationId; // We'll use AutomationId as tab identifier
+            var tab = border.AutomationId;
             if (!string.IsNullOrEmpty(tab)) CurrentTab = tab;
         }
     }
-
-    // Removed OnCollectionViewSizeChanged: FlexLayout handles resizing natively.
 
 
     private void OnAnonymousToggleClicked(object? sender, EventArgs e)

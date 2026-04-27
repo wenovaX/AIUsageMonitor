@@ -107,7 +107,6 @@ public class WindowsController : BasePlatformController
     public override void ExitApplication()
     {
         _isExiting = true;
-        Preferences.Default.Set("IsExiting", true);
         MainThread.BeginInvokeOnMainThread(() => Microsoft.Maui.Controls.Application.Current?.Quit());
     }
 
@@ -139,13 +138,11 @@ public class WindowsController : BasePlatformController
 
     private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        var isManualExit = Preferences.Default.Get("IsExiting", false);
         var rememberChoice = GetRememberCloseChoice();
         var minimizeToTray = GetMinimizeToTray();
 
-        if (_isExiting || isManualExit)
+        if (_isExiting)
         {
-            Preferences.Default.Set("IsExiting", false);
             return;
         }
 
