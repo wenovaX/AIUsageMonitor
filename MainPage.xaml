@@ -255,15 +255,13 @@
 
             <!-- TAB CONTENT: GOOGLE -->
             <ScrollView Grid.Row="2" Padding="20" IsVisible="{Binding IsGoogleTab}">
-                <FlexLayout BindableLayout.ItemsSource="{Binding Accounts}" 
-                            Wrap="Wrap" 
-                            JustifyContent="Start" 
-                            AlignItems="Start"
-                            AlignContent="Start">
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding GoogleAccountRows}" Spacing="5">
                     <BindableLayout.ItemTemplate>
-
-                    <DataTemplate x:DataType="models:CloudAccount">
-                        <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" HeightRequest="320" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                        <DataTemplate x:DataType="models:GoogleAccountRow">
+                            <HorizontalStackLayout BindableLayout.ItemsSource="{Binding Accounts}" Spacing="5">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:CloudAccount">
+                        <Border Margin="0,0,0,0" Padding="0" WidthRequest="240" HeightRequest="{Binding CardHeightHint}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
                             <Border.Shadow><Shadow Brush="Black" Offset="0,6" Radius="15" Opacity="0.5" /></Border.Shadow>
                             <Grid RowDefinitions="Auto, *, Auto">
                                 <!-- Card Header -->
@@ -271,8 +269,11 @@
                                     <!-- Avatar and Email -->
                                     <Grid ColumnDefinitions="30, *, Auto" Padding="14,12">
                                         <Grid>
-                                            <Border IsVisible="{Binding IsAnonymous, Converter={StaticResource InverseBoolConverter}}" HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" StrokeThickness="0">
-                                                <Image Source="{Binding avatar_url}" Aspect="AspectFill" />
+                                            <Border IsVisible="{Binding IsAnonymous, Converter={StaticResource InverseBoolConverter}}" HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" StrokeThickness="0" BackgroundColor="{StaticResource Slate700}">
+                                                <Grid>
+                                                    <Image Source="{Binding AvatarImageSource}" Aspect="AspectFill" IsVisible="{Binding HasAvatarImage}" />
+                                                    <Label Text="{Binding email, Converter={StaticResource AnonymousAvatarConverter}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" IsVisible="{Binding HasAvatarImage, Converter={StaticResource InverseBoolConverter}}" />
+                                                </Grid>
                                             </Border>
                                             <Border IsVisible="{Binding IsAnonymous}" HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" BackgroundColor="{StaticResource Slate700}">
                                                 <Label Text="{Binding email, Converter={StaticResource AnonymousAvatarConverter}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" />
@@ -332,9 +333,9 @@
                                         </VerticalStackLayout>
                                     </VerticalStackLayout>
 
-                                    <VerticalStackLayout Spacing="5" IsVisible="{Binding HasClaudeQuotas}">
-                                        <Label Text="Claude" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
-                                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding ClaudeQuotas}" Spacing="3">
+                                    <VerticalStackLayout Spacing="5" IsVisible="{Binding HasOtherQuotas}">
+                                        <Label Text="Others" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding OtherQuotas}" Spacing="3">
                                             <BindableLayout.ItemTemplate>
                                                 <DataTemplate x:DataType="models:ModelQuotaInfo">
                                                     <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
@@ -345,7 +346,7 @@
                                                             <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
                                                                 <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
                                                                 <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="8" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
-                                                                <Label Grid.Column="2" Text="{Binding percentage, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
+                                                                <Label Grid.Column="2" Text="{Binding percentage, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
                                                             </Grid>
                                                         </Grid>
                                                     </Border>
@@ -362,9 +363,12 @@
                                         CornerRadius="0" BorderWidth="0" VerticalOptions="End" />
                             </Grid>
                         </Border>
-                    </DataTemplate>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </DataTemplate>
                     </BindableLayout.ItemTemplate>
-                </FlexLayout>
+                </VerticalStackLayout>
             </ScrollView>
 
             <!-- TAB CONTENT: CODEX -->
@@ -417,15 +421,20 @@
                                     
                                     <!-- Primary Window (main usage gauge) -->
                                     <VerticalStackLayout Spacing="3">
-                                        <Label Text="{Binding primaryWindowLabel}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                                            <Label Text="{Binding primaryWindowLabel}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                            <Border Grid.Column="1" IsVisible="{Binding HasUsageLimitBadge}" BackgroundColor="#1aef4444" StrokeThickness="0" StrokeShape="RoundRectangle 4" Padding="6,2">
+                                                <Label Text="{Binding UsageLimitBadgeText}" FontSize="7" FontAttributes="Bold" TextColor="{StaticResource Rose500}" VerticalOptions="Center" />
+                                            </Border>
+                                        </Grid>
                                         <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
                                             <Grid BackgroundColor="{StaticResource Slate700}"  VerticalOptions="Center">
-                                                <ProgressBar ScaleY="6" Progress="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageConverter}}" 
-                                                             ProgressColor="{Binding PrimaryRemainingPercent, Converter={StaticResource PercentageColorConverter}}" 
+                                                <ProgressBar ScaleY="6" Progress="{Binding EffectiveRemainingPercent, Converter={StaticResource PercentageConverter}}" 
+                                                             ProgressColor="{Binding EffectiveRemainingPercent, Converter={StaticResource PercentageColorConverter}}" 
                                                              BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
                                                 <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
-                                                    <Label Text="{Binding primaryResetDescription, StringFormat='Resets: {0}'}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
-                                                    <Label Grid.Column="2" Text="{Binding PrimaryRemainingPercent, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                                    <Label Text="{Binding PrimaryStatusText}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                    <Label Grid.Column="2" Text="{Binding EffectiveRemainingPercent, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
                                                 </Grid>
                                             </Grid>
                                         </Border>
@@ -433,7 +442,7 @@
 
                                     <!-- Secondary Window (reset date, not a gauge) -->
                                     <Grid ColumnDefinitions="*, Auto" Padding="0">
-                                        <Label Text="{Binding secondaryWindowLabel, StringFormat='{0}RESET'}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" TextTransform="Uppercase" />
+                                        <Label Text="{Binding SecondaryResetHeader}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" TextTransform="Uppercase" />
                                         <Label Grid.Column="1" Text="{Binding secondaryResetDate}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
                                     </Grid>
 
@@ -461,47 +470,54 @@
                 <VerticalStackLayout Spacing="25" MaximumWidthRequest="800" HorizontalOptions="Start">
                     <!-- Title -->
                     <VerticalStackLayout Spacing="4">
-                        <Label Text="Model Keywords &amp; Filters" FontSize="28" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
-                        <Label Text="Configure which models to track and how they appear in the UI." FontSize="13" TextColor="{StaticResource Slate400}" />
+                        <Label Text="Settings" FontSize="28" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                        <Label Text="Configure discovered Antigravity models and app behavior for the Windows desktop experience." FontSize="13" TextColor="{StaticResource Slate400}" />
                     </VerticalStackLayout>
 
                     <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" />
 
-                    <!-- Model List -->
+                    <!-- Antigravity Models -->
                     <VerticalStackLayout Spacing="15">
-                        <Label Text="TRACKED MODELS" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
-                        
-                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding FilterEntries}" Spacing="10">
-                            <BindableLayout.ItemTemplate>
-                                <DataTemplate>
-                                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15,10">
-                                        <Grid ColumnDefinitions="40, *, *, 120">
-                                            <!-- Toggle -->
-                                            <CheckBox IsChecked="{Binding Enabled}" Color="{StaticResource Emerald500}" VerticalOptions="Center" HorizontalOptions="Start" />
-                                            
-                                            <!-- Keyword -->
-                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="10,0">
-                                                <Label Text="KEYWORD" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
-                                                <Entry Text="{Binding Keyword}" FontSize="13" TextColor="{StaticResource Slate100}" BackgroundColor="Transparent" Placeholder="e.g. gemini" />
-                                            </VerticalStackLayout>
+                        <Label Text="ANTIGRAVITY MODELS" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
 
-                                            <!-- Display Name -->
-                                            <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Margin="10,0">
-                                                <Label Text="DISPLAY NAME" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
-                                                <Entry Text="{Binding DisplayName}" FontSize="13" TextColor="{StaticResource Slate100}" BackgroundColor="Transparent" Placeholder="e.g. Gemini Pro" />
-                                            </VerticalStackLayout>
+                        <HorizontalStackLayout Spacing="10">
+                            <Button Text="UPDATE MODEL LIST" Clicked="OnUpdateModelListClicked" BackgroundColor="{StaticResource Slate700}" Padding="20,0" HeightRequest="42" HorizontalOptions="Start" />
+                            <Button Text="SET TO DEFAULT" Clicked="OnSetModelListToDefaultClicked" BackgroundColor="{StaticResource Slate700}" Padding="20,0" HeightRequest="42" HorizontalOptions="Start" />
+                        </HorizontalStackLayout>
 
-                                            <!-- Actions -->
-                                            <HorizontalStackLayout Grid.Column="3" Spacing="5" HorizontalOptions="End" VerticalOptions="Center">
-                                                <Button Text="↑" Clicked="OnMoveUpClicked" CommandParameter="{Binding .}" WidthRequest="32" HeightRequest="32" Padding="0" BackgroundColor="{StaticResource Slate700}" />
-                                                <Button Text="↓" Clicked="OnMoveDownClicked" CommandParameter="{Binding .}" WidthRequest="32" HeightRequest="32" Padding="0" BackgroundColor="{StaticResource Slate700}" />
-                                                <Button Text="✕" Clicked="OnRemoveFilterClicked" CommandParameter="{Binding .}" WidthRequest="32" HeightRequest="32" Padding="0" BackgroundColor="{StaticResource Rose500}" />
-                                            </HorizontalStackLayout>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </BindableLayout.ItemTemplate>
-                        </VerticalStackLayout>
+                        <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15">
+                            <VerticalStackLayout Spacing="12">
+                                <Label Text="GEMINI" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                                <VerticalStackLayout BindableLayout.ItemsSource="{Binding GeminiCatalogModels}" Spacing="8">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="models:DiscoveredModelEntry">
+                                            <Grid ColumnDefinitions="*, Auto">
+                                                <Label Text="{Binding DisplayName}" FontSize="13" TextColor="{StaticResource Slate50}" VerticalOptions="Center" />
+                                                <Switch Grid.Column="1" IsToggled="{Binding Enabled}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" IsVisible="{Binding IsAvailable}" />
+                                                <Label Grid.Column="1" Text="Missing" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Rose500}" VerticalOptions="Center" IsVisible="{Binding IsMissing}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15">
+                            <VerticalStackLayout Spacing="12">
+                                <Label Text="OTHERS" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
+                                <VerticalStackLayout BindableLayout.ItemsSource="{Binding OtherCatalogModels}" Spacing="8">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="models:DiscoveredModelEntry">
+                                            <Grid ColumnDefinitions="*, Auto">
+                                                <Label Text="{Binding DisplayName}" FontSize="13" TextColor="{StaticResource Slate50}" VerticalOptions="Center" />
+                                                <Switch Grid.Column="1" IsToggled="{Binding Enabled}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" IsVisible="{Binding IsAvailable}" />
+                                                <Label Grid.Column="1" Text="Missing" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Rose500}" VerticalOptions="Center" IsVisible="{Binding IsMissing}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
                     </VerticalStackLayout>
 
                     <!-- App Settings -->
@@ -529,26 +545,7 @@
                         </Border>
                     </VerticalStackLayout>
 
-                    <!-- Add New -->
-                    <Border BackgroundColor="{StaticResource Slate900}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="20">
-                        <Grid ColumnDefinitions="*, *, Auto" ColumnSpacing="15">
-                            <VerticalStackLayout>
-                                <Label Text="NEW KEYWORD" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
-                                <Entry x:Name="NewKeywordEntry" Placeholder="Keyword..." FontSize="14" TextColor="{StaticResource Slate100}" />
-                            </VerticalStackLayout>
-                            <VerticalStackLayout Grid.Column="1">
-                                <Label Text="NEW DISPLAY NAME" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" />
-                                <Entry x:Name="NewDisplayNameEntry" Placeholder="Display Name..." FontSize="14" TextColor="{StaticResource Slate100}" />
-                            </VerticalStackLayout>
-                            <Button Grid.Column="2" Text="ADD MODEL" Clicked="OnAddFilterClicked" VerticalOptions="End" BackgroundColor="{StaticResource Emerald500}" HeightRequest="45" Padding="20,0" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Footer Actions -->
-                    <HorizontalStackLayout Spacing="15" Margin="0,10,0,50">
-                        <Button Text="SAVE CONFIGURATION" Clicked="OnSaveSettingsClicked" BackgroundColor="{StaticResource Sky400}" Padding="25,0" HeightRequest="45" />
-                        <Button Text="RESET TO DEFAULTS" Clicked="OnResetSettingsClicked" BackgroundColor="{StaticResource Slate700}" Padding="25,0" HeightRequest="45" />
-                    </HorizontalStackLayout>
+                    <BoxView HeightRequest="40" Opacity="0" />
                 </VerticalStackLayout>
             </ScrollView>
 
@@ -624,8 +621,11 @@
                     <Border.GestureRecognizers><TapGestureRecognizer /></Border.GestureRecognizers>
                     <VerticalStackLayout Spacing="20" BindingContext="{Binding SelectedAccount}">
                         <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
-                            <Border HeightRequest="36" WidthRequest="36" StrokeShape="RoundRectangle 18" StrokeThickness="0">
-                                <Image Source="{Binding avatar_url}" Aspect="AspectFill" />
+                            <Border HeightRequest="36" WidthRequest="36" StrokeShape="RoundRectangle 18" StrokeThickness="0" BackgroundColor="{StaticResource Slate700}">
+                                <Grid>
+                                    <Image Source="{Binding AvatarImageSource}" Aspect="AspectFill" IsVisible="{Binding HasAvatarImage}" />
+                                    <Label Text="{Binding email, Converter={StaticResource AnonymousAvatarConverter}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" IsVisible="{Binding HasAvatarImage, Converter={StaticResource InverseBoolConverter}}" />
+                                </Grid>
                             </Border>
                             <VerticalStackLayout VerticalOptions="Center">
                                 <Label Text="{Binding name}" FontAttributes="Bold" FontSize="14" TextColor="{StaticResource Slate50}" />

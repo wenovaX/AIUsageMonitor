@@ -8,8 +8,10 @@ public abstract class BasePlatformController : IPlatformController
 
     public virtual bool SupportsTray => false;
     public virtual bool IsWindowVisible => true;
+    public virtual bool IsWindowResizeInProgress => false;
 
     public event EventHandler? WindowVisibilityChanged;
+    public event EventHandler? WindowResizeCompleted;
 
     public virtual void Initialize(Window window)
     {
@@ -44,5 +46,10 @@ public abstract class BasePlatformController : IPlatformController
     protected void RaiseWindowVisibilityChanged()
     {
         WindowVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    protected void RaiseWindowResizeCompleted()
+    {
+        WindowResizeCompleted?.Invoke(this, EventArgs.Empty);
     }
 }

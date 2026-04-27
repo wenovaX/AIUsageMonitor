@@ -1,12 +1,12 @@
 # AIUsageMonitor
 
-> Antigravity와 Codex 사용량을 한곳에서 확인할 수 있는 프리미엄 AI 사용량 모니터링 앱
+> Antigravity와 Codex 사용량을 한 화면에서 확인하는 Windows 중심 AI 사용량 모니터링 앱
 
 ![AIUsageMonitor Header](Resources/Images/app_title.png)
 
 ## 개요
 
-AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 윈도우를 한 화면에서 확인할 수 있는 .NET MAUI 기반 데스크톱 앱입니다. 현재는 Windows 데스크톱 사용에 맞춰 정리되어 있습니다.
+AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 시점을 한 곳에서 확인할 수 있는 .NET MAUI 데스크톱 앱입니다. 현재는 Windows 데스크톱 환경에 맞춰 최적화되어 있습니다.
 
 ## 미리보기
 
@@ -21,27 +21,40 @@ AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 윈도우
 ## 주요 기능
 
 ### 멀티 서비스 지원
-- Antigravity 계정과 모델 사용량 추적
-- Codex 세션 제한과 주간 쿼터 모니터링
+- Antigravity 계정 및 모델 사용량 추적
+- Codex 세션 제한과 주간 제한 모니터링
 - 여러 계정을 한 대시보드에서 통합 관리
 
-### Windows 트레이 워크플로우
-- 트레이 아이콘 지원
-- 좌클릭 및 더블클릭으로 앱 복원
-- 창 닫기 시 트레이로 보내기 / 종료 선택
-- 닫기 팝업에서만 백그라운드 안내 알림 표시
-- 선택 기억 기능으로 이후 동작 단순화
+### Windows tray 워크플로우
+- 트레이 아이콘 표시
+- 좌클릭과 더블클릭으로 창 복원
+- 닫기 시 트레이로 보내기 / 종료 선택
+- 닫기 동작 기억하기
 
 ### 새로고침과 모니터링
-- 헤더에서 전체 새로고침 실행
-- 현재 탭 기준 `F5` 전체 새로고침 지원
+- 헤더에서 전체 새로고침
+- 현재 탭 기준 `F5` 전체 새로고침
 - 제한된 동시성 기반 백그라운드 refresh queue
 - 네트워크 오류를 고려한 재시도 흐름
 
 ### 프라이버시와 사용성
 - 화면 공유용 Anonymous 모드
-- 모델 필터 커스터마이징
+- Antigravity 모델 목록 수동 관리
 - Google / Codex / Settings / About 탭 구성
+
+## Antigravity 모델 목록
+
+- 앱 시작 시 기본 모델 목록과 순서를 사용합니다.
+  - `Gemini 3.1 Pro (High)`
+  - `Gemini 3.1 Pro (Low)`
+  - `Gemini 3 Flash`
+  - `Claude Sonnet 4.6 (Thinking)`
+  - `Claude Opus 4.6 (Thinking)`
+  - `GPT-OSS 120B (Medium)`
+- `Update Model List`는 이미 받아온 Antigravity quota 데이터 기준으로 모델을 추가합니다.
+- 새로 발견된 모델은 기본적으로 `OFF` 상태로만 추가됩니다.
+- `Set to Default`는 기본 모델 목록으로 되돌립니다.
+- 현재 데이터에 없는 항목은 삭제하지 않고 Settings에서 `Missing`으로 표시합니다.
 
 ## 요구 사항
 
@@ -60,24 +73,24 @@ AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 윈도우
 
 ### Antigravity (Google)
 1. Antigravity 탭으로 이동합니다.
-2. `+ Add Account` 버튼을 누릅니다.
+2. `+ Add Account`를 누릅니다.
 3. 브라우저에서 Google OAuth 인증을 완료합니다.
 
 ### Codex (OpenAI / GitHub)
 1. Codex 탭으로 이동합니다.
-2. `+ Add Account` 버튼을 누릅니다.
+2. `+ Add Account`를 누릅니다.
 3. OpenAI 로그인, GitHub 로그인, 수동 토큰 입력 중 하나를 선택합니다.
 
 ## 참고
 
-- 버전: `v1.0.3`
+- 버전: `v1.0.4`
 - Windows tray 동작은 platform controller 계층에서 관리합니다.
-- 트레이 아이콘은 Windows 호환성을 위해 `trayicon.ico`로 배포됩니다.
+- tray 아이콘은 Windows 호환성을 위해 `trayicon.ico`로 배포합니다.
 
 ## 개인정보 및 보안
 
 - 토큰과 설정은 로컬에 저장됩니다.
-- 앱은 각 제공자 엔드포인트와 직접 통신합니다.
+- 앱은 각 서비스 제공자 엔드포인트와 직접 통신합니다.
 - 민감한 계정에 사용하기 전 소스를 검토하는 것을 권장합니다.
 
 ## 라이선스

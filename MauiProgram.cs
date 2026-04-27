@@ -3,6 +3,7 @@ using CommunityToolkit.Maui;
 using H.NotifyIcon;
 using AIUsageMonitor.PlatformAbstractions;
 using AIUsageMonitor.PlatformImplementations;
+using AIUsageMonitor.Services;
 
 namespace AIUsageMonitor
 {
@@ -25,6 +26,7 @@ namespace AIUsageMonitor
 
             builder.Services.AddSingleton<IPlatformController, WindowsController>();
             builder.Services.AddSingleton<PlatformManager>();
+            builder.Services.AddSingleton<ModelCatalogService>();
 
 #if DEBUG
     		builder.Logging.AddDebug();

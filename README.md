@@ -39,7 +39,7 @@ Download the latest build from the Releases page.
 
 ### Privacy and usability
 - Anonymous mode for screen sharing
-- Model filter customization
+- Antigravity model list controls with default reset and manual update flow
 - Tabbed UI for Google, Codex, Settings, and About
 
 ## Requirements
@@ -67,9 +67,23 @@ Download the latest build from the Releases page.
 2. Click `+ Add Account`.
 3. Choose OpenAI login, GitHub login, or manual token entry.
 
+## Antigravity model list
+
+- The app starts with a default model set and canonical order:
+  - `Gemini 3.1 Pro (High)`
+  - `Gemini 3.1 Pro (Low)`
+  - `Gemini 3 Flash`
+  - `Claude Sonnet 4.6 (Thinking)`
+  - `Claude Opus 4.6 (Thinking)`
+  - `GPT-OSS 120B (Medium)`
+- `Update Model List` scans already-fetched Antigravity quota data and appends newly discovered models.
+- Newly discovered models are added as disabled by default so you can opt in manually.
+- `Set to Default` restores the default list above.
+- Missing discovered models remain visible in Settings as `Missing` instead of being silently removed.
+
 ## Notes
 
-- Version: `v1.0.3`
+- Version: `v1.0.4`
 - Windows tray behavior is handled through the platform controller layer.
 - The tray icon is shipped as `trayicon.ico` for more reliable Windows system tray rendering.
 

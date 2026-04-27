@@ -5,6 +5,7 @@ using AIUsageMonitor.PlatformAbstractions;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 #if WINDOWS
+using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -22,9 +23,13 @@ public class WindowsController : BasePlatformController
     private TaskbarIcon? _trayIcon;
     private Microsoft.Maui.Controls.MenuFlyoutItem? _showAppMenuItem;
     private Microsoft.UI.Xaml.Window? _platformWindow;
+    private IntPtr _windowHandle;
+    private SubclassProc? _subclassProc;
+    private bool _isResizeMoveActive;
 #endif
 
     public override bool SupportsTray => true;
+    public override bool IsWindowResizeInProgress => _isResizeMoveActive;
 
     public override bool IsWindowVisible
     {
@@ -126,8 +131,10 @@ public class WindowsController : BasePlatformController
 
         _platformWindow = window;
 
-        var handle = WindowNative.GetWindowHandle(window);
-        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
+        _windowHandle = WindowNative.GetWindowHandle(window);
+        EnsureResizeSubclass();
+
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_windowHandle);
         var appWindow = AppWindow.GetFromWindowId(windowId);
 
         appWindow.Closing -= OnAppWindowClosing;
@@ -291,5 +298,56 @@ public class WindowsController : BasePlatformController
         {
         }
     }
+
+    private void EnsureResizeSubclass()
+    {
+        if (_windowHandle == IntPtr.Zero || _subclassProc is not null)
+            return;
+
+        _subclassProc = WindowSubclassProc;
+        SetWindowSubclass(_windowHandle, _subclassProc, 1, IntPtr.Zero);
+    }
+
+    private IntPtr WindowSubclassProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData)
+    {
+        switch (message)
+        {
+            case WmEnterSizeMove:
+                _isResizeMoveActive = true;
+                break;
+
+            case WmExitSizeMove:
+                _isResizeMoveActive = false;
+                MainThread.BeginInvokeOnMainThread(RaiseWindowResizeCompleted);
+                break;
+
+            case WmNcDestroy:
+                if (_subclassProc is not null)
+                {
+                    RemoveWindowSubclass(hWnd, _subclassProc, 1);
+                }
+                _subclassProc = null;
+                _windowHandle = IntPtr.Zero;
+                _isResizeMoveActive = false;
+                break;
+        }
+
+        return DefSubclassProc(hWnd, message, wParam, lParam);
+    }
+
+    private const uint WmEnterSizeMove = 0x0231;
+    private const uint WmExitSizeMove = 0x0232;
+    private const uint WmNcDestroy = 0x0082;
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, uint uIdSubclass, IntPtr dwRefData);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    private static extern bool RemoveWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, uint uIdSubclass);
+
+    [DllImport("comctl32.dll")]
+    private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private delegate IntPtr SubclassProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData);
 #endif
 }

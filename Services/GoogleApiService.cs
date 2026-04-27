@@ -11,7 +11,6 @@ namespace AIUsageMonitor.Services;
 public class GoogleApiService
 {
     private readonly HttpClient _httpClient;
-    private readonly ModelFilterService _filterService;
 
     // Obfuscated credentials to avoid GitHub secret scanning
     private static readonly byte[] _cid = { 49, 48, 55, 49, 48, 48, 54, 48, 54, 48, 53, 57, 49, 45, 116, 109, 104, 115, 115, 105, 110, 50, 104, 50, 49, 108, 99, 114, 101, 50, 51, 53, 118, 116, 111, 108, 111, 106, 104, 52, 103, 52, 48, 51, 101, 112, 46, 97, 112, 112, 115, 46, 103, 111, 111, 103, 108, 101, 117, 115, 101, 114, 99, 111, 110, 116, 101, 110, 116, 46, 99, 111, 109 };
@@ -35,9 +34,8 @@ public class GoogleApiService
 
     private const string UserAgent = "antigravity/1.11.3 Darwin/arm64";
 
-    public GoogleApiService(ModelFilterService filterService)
+    public GoogleApiService()
     {
-        _filterService = filterService;
         _httpClient = new HttpClient();
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
     }
@@ -168,8 +166,9 @@ public class GoogleApiService
     {
         var (projectId, tier) = await FetchProjectContextAsync(accessToken);
         var result = new QuotaData();
-        
+
         var payload = projectId != null ? new { project = projectId } : (object)new { };
+        var successfulEndpointCount = 0;
 
         foreach (var endpoint in QuotaEndpoints)
         {
@@ -181,6 +180,7 @@ public class GoogleApiService
 
                 var response = await _httpClient.SendAsync(request);
                 if (!response.IsSuccessStatusCode) continue;
+                successfulEndpointCount++;
 
                 var json = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(json);
@@ -190,20 +190,21 @@ public class GoogleApiService
                     foreach (var model in modelsProp.EnumerateObject())
                     {
                         var modelName = model.Name;
-                        if (!IsTrackedModel(modelName)) continue;
-
                         var info = model.Value;
                         if (info.TryGetProperty("quotaInfo", out var quotaInfo))
                         {
                             var fraction = quotaInfo.TryGetProperty("remainingFraction", out var f) ? f.GetDouble() : 0;
                             var resetTimeRaw = quotaInfo.TryGetProperty("resetTime", out var r) ? r.GetString() : "";
-                            var displayName = info.TryGetProperty("displayName", out var d) ? d.GetString() : FormatModelName(modelName);
+                            var rawDisplayName = info.TryGetProperty("displayName", out var d) ? d.GetString() : null;
+                            var resolvedDisplayName = string.IsNullOrWhiteSpace(rawDisplayName)
+                                ? modelName.Replace("models/", "")
+                                : rawDisplayName;
                             
                             var quota = new ModelQuotaInfo
                             {
                                 percentage = (int)(fraction * 100),
                                 resetTime = FormatResetTime(resetTimeRaw),
-                                display_name = displayName ?? modelName
+                                display_name = resolvedDisplayName
                             };
 
                             // Deduplicate by display_name
@@ -219,6 +220,11 @@ public class GoogleApiService
                             }
                         }
                     }
+
+                    // The endpoints are fallback variants of the same data source.
+                    // Once we get a usable model list, avoid extra duplicate requests.
+                    if (result.models.Count > 0)
+                        break;
                 }
             }
             catch (Exception ex)
@@ -226,19 +232,16 @@ public class GoogleApiService
                 Debug.WriteLine($"[API] Error with endpoint {endpoint}: {ex.Message}");
             }
         }
+
+        Debug.WriteLine($"[GoogleQuota] Successful endpoints={successfulEndpointCount}, models={result.models.Count}");
         
-        // Sort by user-defined display order
         var sorted = new QuotaData();
-        foreach (var kv in result.models.OrderBy(kv => _filterService.GetSortOrder(kv.Value.display_name)))
+        foreach (var kv in result.models.OrderBy(kv => kv.Value.display_name, StringComparer.OrdinalIgnoreCase))
         {
             sorted.models[kv.Key] = kv.Value;
         }
         return sorted;
     }
-
-    private bool IsTrackedModel(string name) => _filterService.IsTrackedModel(name);
-
-    private string FormatModelName(string name) => _filterService.GetDisplayName(name);
 
     private string FormatResetTime(string? isoTime)
     {

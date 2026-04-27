@@ -3,6 +3,7 @@ using AIUsageMonitor.PlatformAbstractions;
 using AIUsageMonitor.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Windows.Input;
@@ -22,7 +23,7 @@ public partial class MainPage : ContentPage
         Background
     }
 
-    private readonly ModelFilterService _modelFilterService = new();
+    private readonly ModelCatalogService _modelCatalogService;
     private readonly GoogleRadarService _googleRadar;
     private readonly AccountManagerService _accountManager = new();
     private readonly CodexAccountManagerService _codexAccountManager = new();
@@ -30,8 +31,18 @@ public partial class MainPage : ContentPage
     private readonly OpenAIAuthService _openAIAuth = new();
     private readonly CodexApiService _codexApi = new();
     private readonly PlatformManager _platformManager;
+    private const double GoogleCardWidth = 240;
+    private const double GoogleCardSpacing = 5;
+    private const double GoogleLayoutHorizontalPadding = 80;
+    private const int GoogleLayoutDebounceMilliseconds = 120;
 
-    public ObservableCollection<ModelFilterEntry> FilterEntries => _modelFilterService.TrackedModels;
+    public IReadOnlyList<DiscoveredModelEntry> GeminiCatalogModels =>
+        _modelCatalogService.Models.Where(model => model.IsGemini).ToList();
+
+    public IReadOnlyList<DiscoveredModelEntry> OtherCatalogModels =>
+        _modelCatalogService.Models.Where(model => !model.IsGemini).ToList();
+
+    public ObservableCollection<GoogleAccountRow> GoogleAccountRows { get; } = new();
 
     // Tab Navigation Logic
     private string _currentTab = "Google";
@@ -40,7 +51,27 @@ public partial class MainPage : ContentPage
         get => _currentTab;
         set 
         { 
+            if (_currentTab == value)
+                return;
+
+            var previousTab = _currentTab;
             _currentTab = value; 
+
+            if (previousTab == "Settings" && value != "Settings")
+            {
+                _modelCatalogService.ResumeCatalogChangedNotifications();
+                if (_hasPendingModelCatalogUiRefresh)
+                {
+                    _hasPendingModelCatalogUiRefresh = false;
+                    RefreshModelCatalogUi();
+                }
+            }
+
+            if (value == "Settings")
+            {
+                _modelCatalogService.SuspendCatalogChangedNotifications();
+            }
+
             OnPropertyChanged(); 
             OnPropertyChanged(nameof(IsGoogleTab));
             OnPropertyChanged(nameof(IsCodexTab));
@@ -104,6 +135,13 @@ public partial class MainPage : ContentPage
 #if WINDOWS
     private Microsoft.UI.Xaml.Window? _platformWindow;
 #endif
+    private CancellationTokenSource? _googleLayoutCts;
+    private int _lastGoogleCardsPerRow;
+    private string _lastGoogleLayoutSignature = string.Empty;
+    private readonly Dictionary<string, int> _googleAccountRowIndexById = new();
+    private readonly Dictionary<int, CancellationTokenSource> _googleRowRefreshCts = new();
+    private bool _isBulkUpdatingGoogleLayout;
+    private bool _hasPendingModelCatalogUiRefresh;
 
     private bool _isLoginWaiting;
     public bool IsLoginWaiting
@@ -112,7 +150,7 @@ public partial class MainPage : ContentPage
         set { _isLoginWaiting = value; OnPropertyChanged(); }
     }
 
-    public const string AppVersion = "1.0.3";
+    public const string AppVersion = "1.0.4";
     public string DisplayVersion => $"v{AppVersion}";
 
     private CancellationTokenSource? _loginCts;
@@ -128,18 +166,18 @@ public partial class MainPage : ContentPage
     public bool IsSettingsPanelOpen => SelectedAccount != null;
 
     // Tab-aware stats
-    public int GlobalActions => CurrentTab == "Codex" 
-        ? CodexAccounts.Count 
-        : Accounts.Sum(a => a.quotas.Count(q => !a.HiddenModels.Contains(q.display_name)));
-    public int GlobalActive => CurrentTab == "Codex" 
+    public int GlobalActions => CurrentTab == "Codex"
+        ? CodexAccounts.Count
+        : GetVisibleGoogleQuotasSnapshot().Count;
+    public int GlobalActive => CurrentTab == "Codex"
         ? CodexAccounts.Count(a => !a.IsRateLimited)
-        : Accounts.Sum(a => a.quotas.Count(q => !a.HiddenModels.Contains(q.display_name) && q.percentage > 0));
-    public int GlobalLimited => CurrentTab == "Codex" 
+        : GetVisibleGoogleQuotasSnapshot().Count(q => q.percentage > 0);
+    public int GlobalLimited => CurrentTab == "Codex"
         ? CodexAccounts.Count(a => a.IsRateLimited)
-        : Accounts.Sum(a => a.quotas.Count(q => !a.HiddenModels.Contains(q.display_name) && q.percentage == 0));
-    public int GlobalQuota => CurrentTab == "Codex" 
+        : GetVisibleGoogleQuotasSnapshot().Count(q => q.percentage == 0);
+    public int GlobalQuota => CurrentTab == "Codex"
         ? (CodexAccounts.Count == 0 ? 0 : (int)CodexAccounts.Average(a => a.PrimaryRemainingPercent))
-        : (GlobalActions == 0 ? 0 : (int)Accounts.SelectMany(a => a.quotas.Where(q => !a.HiddenModels.Contains(q.display_name))).Average(q => q.percentage));
+        : GetVisibleGoogleQuotaAverage();
 
     public ObservableCollection<CloudAccount> Accounts => _accountManager.Accounts;
     public ObservableCollection<CodexAccount> CodexAccounts => _codexAccountManager.Accounts;
@@ -149,21 +187,32 @@ public partial class MainPage : ContentPage
     public MainPage()
     {
         _platformManager = MauiProgram.Services.GetRequiredService<PlatformManager>();
+        _modelCatalogService = MauiProgram.Services.GetRequiredService<ModelCatalogService>();
         (_maxGlobalRefreshConcurrency, _maxGoogleRefreshConcurrency, _maxCodexRefreshConcurrency) = CalculateRefreshConcurrency();
         _globalRefreshSemaphore = new SemaphoreSlim(_maxGlobalRefreshConcurrency, _maxGlobalRefreshConcurrency);
         _googleRefreshSemaphore = new SemaphoreSlim(_maxGoogleRefreshConcurrency, _maxGoogleRefreshConcurrency);
         _codexRefreshSemaphore = new SemaphoreSlim(_maxCodexRefreshConcurrency, _maxCodexRefreshConcurrency);
         Debug.WriteLine($"Refresh queue initialized. Global={_maxGlobalRefreshConcurrency}, Google={_maxGoogleRefreshConcurrency}, Codex={_maxCodexRefreshConcurrency}");
 
-        _googleRadar = new GoogleRadarService(_modelFilterService);
+        _googleRadar = new GoogleRadarService();
         InitializeComponent();
         BindingContext = this;
         HandlerChanged += OnHandlerChanged;
         Unloaded += OnUnloaded;
+        SizeChanged += OnPageSizeChanged;
         
         ShowAppCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
         ExitAppCommand = new Command(() => OnExitAppFromTray(null, EventArgs.Empty));
         DoubleClickTrayIconCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
+
+        Accounts.CollectionChanged += OnAccountsCollectionChanged;
+        _modelCatalogService.CatalogChanged += OnModelCatalogChanged;
+        UpdateDisplayIndices();
+        foreach (var account in Accounts)
+        {
+            account.PropertyChanged += OnGoogleAccountPropertyChanged;
+        }
+        RebuildGoogleAccountRows();
 
         _ = RefreshAllAccounts(RefreshQueueLevel.Background);
     }
@@ -201,7 +250,25 @@ public partial class MainPage : ContentPage
 
     private void OnUnloaded(object? sender, EventArgs e)
     {
+        SizeChanged -= OnPageSizeChanged;
+        _googleLayoutCts?.Cancel();
+        _googleLayoutCts?.Dispose();
+        _googleLayoutCts = null;
+        foreach (var cts in _googleRowRefreshCts.Values)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _googleRowRefreshCts.Clear();
+        Accounts.CollectionChanged -= OnAccountsCollectionChanged;
+        _modelCatalogService.CatalogChanged -= OnModelCatalogChanged;
+        foreach (var account in Accounts)
+        {
+            account.PropertyChanged -= OnGoogleAccountPropertyChanged;
+        }
         _platformManager.Current.WindowVisibilityChanged -= OnPlatformWindowVisibilityChanged;
+        _platformManager.Current.WindowResizeCompleted -= OnPlatformWindowResizeCompleted;
+        _googleAccountRowIndexById.Clear();
 #if WINDOWS
         if (_platformWindow?.Content is UIElement rootElement)
         {
@@ -215,7 +282,344 @@ public partial class MainPage : ContentPage
     {
         _platformManager.Current.WindowVisibilityChanged -= OnPlatformWindowVisibilityChanged;
         _platformManager.Current.WindowVisibilityChanged += OnPlatformWindowVisibilityChanged;
+        _platformManager.Current.WindowResizeCompleted -= OnPlatformWindowResizeCompleted;
+        _platformManager.Current.WindowResizeCompleted += OnPlatformWindowResizeCompleted;
         _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
+    }
+
+    private void OnPageSizeChanged(object? sender, EventArgs e)
+    {
+        if (_platformManager.Current.IsWindowResizeInProgress)
+            return;
+
+        ScheduleGoogleAccountRowRefresh();
+    }
+
+    private void OnAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (CloudAccount account in e.OldItems)
+            {
+                account.PropertyChanged -= OnGoogleAccountPropertyChanged;
+            }
+        }
+
+        if (e.NewItems != null)
+        {
+            foreach (CloudAccount account in e.NewItems)
+            {
+                account.PropertyChanged -= OnGoogleAccountPropertyChanged;
+                account.PropertyChanged += OnGoogleAccountPropertyChanged;
+            }
+        }
+
+        RebuildGoogleAccountRows();
+    }
+
+    private void ScheduleGoogleAccountRowRefresh(bool force = false)
+    {
+        var signature = BuildGoogleLayoutSignature();
+        if (!force && signature == _lastGoogleLayoutSignature)
+            return;
+
+        _googleLayoutCts?.Cancel();
+        _googleLayoutCts?.Dispose();
+        _googleLayoutCts = new CancellationTokenSource();
+        var token = _googleLayoutCts.Token;
+
+        _ = MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(GoogleLayoutDebounceMilliseconds, token);
+                if (token.IsCancellationRequested)
+                    return;
+
+                var refreshedSignature = BuildGoogleLayoutSignature();
+                if (!force && refreshedSignature == _lastGoogleLayoutSignature)
+                    return;
+
+                RebuildGoogleAccountRows();
+            }
+            catch (TaskCanceledException)
+            {
+            }
+        });
+    }
+
+    private void OnGoogleAccountPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_isBulkUpdatingGoogleLayout)
+            return;
+
+        if (sender is not CloudAccount account)
+            return;
+
+        if (e.PropertyName is not nameof(CloudAccount.quotas)
+            and not nameof(CloudAccount.HiddenModels)
+            and not nameof(CloudAccount.GeminiQuotas)
+            and not nameof(CloudAccount.OtherQuotas)
+            and not nameof(CloudAccount.HasGeminiQuotas)
+            and not nameof(CloudAccount.HasOtherQuotas))
+        {
+            return;
+        }
+
+        RefreshGoogleAccountRow(account);
+    }
+
+    private void RebuildGoogleAccountRows()
+    {
+        foreach (var cts in _googleRowRefreshCts.Values)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _googleRowRefreshCts.Clear();
+
+        GoogleAccountRows.Clear();
+        _googleAccountRowIndexById.Clear();
+
+        _lastGoogleCardsPerRow = CalculateGoogleCardsPerRow();
+        _lastGoogleLayoutSignature = BuildGoogleLayoutSignature();
+
+        if (Accounts.Count == 0)
+            return;
+
+        var cardsPerRow = _lastGoogleCardsPerRow;
+
+        for (int i = 0; i < Accounts.Count; i += cardsPerRow)
+        {
+            var rowAccounts = Accounts.Skip(i).Take(cardsPerRow).ToList();
+            var rowHeight = rowAccounts.Max(EstimateGoogleCardHeight);
+            var row = new GoogleAccountRow();
+            var rowIndex = GoogleAccountRows.Count;
+
+            foreach (var account in rowAccounts)
+            {
+                account.CardHeightHint = rowHeight;
+                row.Accounts.Add(account);
+                _googleAccountRowIndexById[account.id] = rowIndex;
+            }
+
+            GoogleAccountRows.Add(row);
+        }
+    }
+
+    private void RefreshGoogleAccountRow(CloudAccount account)
+    {
+        if (!_googleAccountRowIndexById.TryGetValue(account.id, out var rowIndex)
+            || rowIndex < 0
+            || rowIndex >= GoogleAccountRows.Count)
+        {
+            RebuildGoogleAccountRows();
+            return;
+        }
+
+        ScheduleGoogleAccountRowHeightRefresh(rowIndex);
+    }
+
+    private void ScheduleGoogleAccountRowHeightRefresh(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= GoogleAccountRows.Count)
+            return;
+
+        if (_googleRowRefreshCts.TryGetValue(rowIndex, out var existingCts))
+        {
+            existingCts.Cancel();
+            existingCts.Dispose();
+        }
+
+        var cts = new CancellationTokenSource();
+        _googleRowRefreshCts[rowIndex] = cts;
+        var token = cts.Token;
+
+        _ = MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(GoogleLayoutDebounceMilliseconds, token);
+                if (token.IsCancellationRequested)
+                    return;
+
+                RefreshGoogleAccountRowCore(rowIndex);
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            finally
+            {
+                if (_googleRowRefreshCts.TryGetValue(rowIndex, out var current) && current == cts)
+                {
+                    _googleRowRefreshCts.Remove(rowIndex);
+                }
+                cts.Dispose();
+            }
+        });
+    }
+
+    private void RefreshGoogleAccountRowCore(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= GoogleAccountRows.Count)
+            return;
+
+        var row = GoogleAccountRows[rowIndex];
+        if (row.Accounts.Count == 0)
+            return;
+
+        var newRowHeight = row.Accounts.Max(EstimateGoogleCardHeight);
+        var currentHeight = row.Accounts[0].CardHeightHint;
+
+        if (Math.Abs(currentHeight - newRowHeight) < 0.5)
+            return;
+
+        foreach (var rowAccount in row.Accounts)
+        {
+            rowAccount.CardHeightHint = newRowHeight;
+        }
+
+        _lastGoogleLayoutSignature = BuildGoogleLayoutSignature();
+    }
+
+    private void OnPlatformWindowResizeCompleted(object? sender, EventArgs e)
+    {
+        RebuildGoogleAccountRows();
+    }
+
+    private void OnModelCatalogChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (IsSettingsTab)
+            {
+                _hasPendingModelCatalogUiRefresh = true;
+                OnPropertyChanged(nameof(GeminiCatalogModels));
+                OnPropertyChanged(nameof(OtherCatalogModels));
+                return;
+            }
+
+            RefreshModelCatalogUi();
+        });
+    }
+
+    private void RefreshModelCatalogUi()
+    {
+        OnPropertyChanged(nameof(GeminiCatalogModels));
+        OnPropertyChanged(nameof(OtherCatalogModels));
+
+        _isBulkUpdatingGoogleLayout = true;
+        try
+        {
+            foreach (var account in Accounts)
+            {
+                account.NotifyQuotaChanges();
+            }
+        }
+        finally
+        {
+            _isBulkUpdatingGoogleLayout = false;
+        }
+
+        RebuildGoogleAccountRows();
+        NotifyStatsChanged();
+    }
+
+    private async void OnUpdateModelListClicked(object? sender, EventArgs e)
+    {
+        var hasRegisteredAntigravityAccount = Accounts.Any(account =>
+            !string.IsNullOrWhiteSpace(account.refresh_token) ||
+            !string.IsNullOrWhiteSpace(account.access_token));
+
+        if (!hasRegisteredAntigravityAccount)
+        {
+            await DisplayAlertAsync("Antigravity Models", "유효한 Antigravity 계정을 하나 이상 등록하고 다시 눌러주세요.", "OK");
+            return;
+        }
+
+        var discoveredModels = Accounts
+            .SelectMany(account => account.quotas)
+            .Select(quota => quota.display_name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (discoveredModels.Count == 0)
+        {
+            await DisplayAlertAsync("Antigravity Models", "Antigravity 정보를 아직 불러오지 못했습니다. 계정을 하나 이상 등록하고 새로고침한 뒤 다시 눌러주세요.", "OK");
+            return;
+        }
+
+        var updated = _modelCatalogService.UpdateAvailableModels(discoveredModels);
+        if (!updated)
+        {
+            OnPropertyChanged(nameof(GeminiCatalogModels));
+            OnPropertyChanged(nameof(OtherCatalogModels));
+        }
+    }
+
+    private void OnSetModelListToDefaultClicked(object? sender, EventArgs e)
+    {
+        _modelCatalogService.ResetToDefaults();
+        OnPropertyChanged(nameof(GeminiCatalogModels));
+        OnPropertyChanged(nameof(OtherCatalogModels));
+    }
+
+    private string BuildGoogleLayoutSignature()
+    {
+        var cardsPerRow = CalculateGoogleCardsPerRow();
+        var heightSignature = string.Join(",", Accounts.Select(a => EstimateGoogleCardHeight(a).ToString("F0")));
+        return $"{cardsPerRow}|{heightSignature}";
+    }
+
+    private int CalculateGoogleCardsPerRow()
+    {
+        var availableWidth = Width <= 0
+            ? GoogleCardWidth
+            : Math.Max(GoogleCardWidth, Width - GoogleLayoutHorizontalPadding);
+
+        return Math.Max(1, (int)Math.Floor((availableWidth + GoogleCardSpacing) / (GoogleCardWidth + GoogleCardSpacing)));
+    }
+
+    private static double EstimateGoogleCardHeight(CloudAccount account)
+    {
+        var height = 136d;
+
+        if (account.HasGeminiQuotas)
+        {
+            height += 16;
+            height += account.GeminiQuotas.Count() * 28;
+        }
+
+        if (account.HasOtherQuotas)
+        {
+            height += 16;
+            height += account.OtherQuotas.Count() * 28;
+        }
+
+        return Math.Max(210, height);
+    }
+
+    private List<ModelQuotaInfo> GetVisibleGoogleQuotasSnapshot()
+    {
+        return Accounts
+            .ToList()
+            .SelectMany(account =>
+            {
+                var hiddenModels = account.HiddenModels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return account.quotas
+                    .ToList()
+                    .Where(quota =>
+                        !hiddenModels.Contains(quota.display_name) &&
+                        _modelCatalogService.IsEnabled(quota.display_name));
+            })
+            .ToList();
+    }
+
+    private int GetVisibleGoogleQuotaAverage()
+    {
+        var quotas = GetVisibleGoogleQuotasSnapshot();
+        return quotas.Count == 0 ? 0 : (int)quotas.Average(quota => quota.percentage);
     }
 
     private void OnShowAppFromTray(object? sender, EventArgs e)
@@ -305,6 +709,7 @@ public partial class MainPage : ContentPage
             await _googleRadar.UpdateAccountDataAsync(account);
             _accountManager.AddOrUpdateAccount(account);
             UpdateDisplayIndices();
+            RebuildGoogleAccountRows();
             NotifyStatsChanged();
         }
         catch (OperationCanceledException)
@@ -622,6 +1027,7 @@ public partial class MainPage : ContentPage
 
             _accountManager.SaveAccounts();
             UpdateDisplayIndices();
+            RebuildGoogleAccountRows();
             NotifyStatsChanged();
         }
         catch (Exception ex)
@@ -718,14 +1124,16 @@ public partial class MainPage : ContentPage
                 {
                     account.secondaryUsedPercent = weeklyWindow.UsedPercent;
                     account.secondaryResetDate = CodexApiService.FormatResetDate(weeklyWindow.ResetAt);
+                    account.secondaryResetDescription = CodexApiService.FormatResetTime(weeklyWindow.ResetAt);
 
                     var secondaryText = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
-                    account.secondaryWindowLabel = string.IsNullOrWhiteSpace(secondaryText) ? string.Empty : $"{secondaryText} ";
+                    account.secondaryWindowLabel = secondaryText;
                 }
                 else
                 {
                     account.secondaryWindowLabel = string.Empty;
                     account.secondaryResetDate = string.Empty;
+                    account.secondaryResetDescription = string.Empty;
                 }
 
                 if (usage.Credits != null)
@@ -814,6 +1222,7 @@ public partial class MainPage : ContentPage
                 {
                     account.HiddenModels.Add(modelInfo.display_name);
                     account.NotifyQuotaChanges();
+                    RefreshGoogleAccountRow(account);
                     _accountManager.SaveAccounts();
                     NotifyStatsChanged();
                 }
@@ -866,6 +1275,7 @@ public partial class MainPage : ContentPage
                 {
                     await _accountManager.ImportAccountsAsync(result.FullPath);
                     UpdateDisplayIndices();
+                    RebuildGoogleAccountRows();
                     NotifyStatsChanged();
                 }
                 else
@@ -915,6 +1325,7 @@ public partial class MainPage : ContentPage
         {
             _accountManager.RemoveAccount(id);
             UpdateDisplayIndices();
+            RebuildGoogleAccountRows();
             NotifyStatsChanged();
         }
     }
@@ -925,48 +1336,6 @@ public partial class MainPage : ContentPage
         {
             _codexAccountManager.RemoveAccount(id);
         }
-    }
-
-    private void OnMoveUpClicked(object? sender, EventArgs e)
-    {
-        if (sender is Button btn && btn.CommandParameter is ModelFilterEntry entry)
-            _modelFilterService.MoveUp(entry);
-    }
-
-    private void OnMoveDownClicked(object? sender, EventArgs e)
-    {
-        if (sender is Button btn && btn.CommandParameter is ModelFilterEntry entry)
-            _modelFilterService.MoveDown(entry);
-    }
-
-    private void OnRemoveFilterClicked(object? sender, EventArgs e)
-    {
-        if (sender is Button btn && btn.CommandParameter is ModelFilterEntry entry)
-            _modelFilterService.RemoveEntry(entry);
-    }
-
-    private void OnAddFilterClicked(object? sender, EventArgs e)
-    {
-        var keyword = NewKeywordEntry.Text?.Trim();
-        var displayName = NewDisplayNameEntry.Text?.Trim();
-
-        if (string.IsNullOrEmpty(keyword) || string.IsNullOrEmpty(displayName)) return;
-
-        _modelFilterService.AddEntry(keyword, displayName);
-        NewKeywordEntry.Text = "";
-        NewDisplayNameEntry.Text = "";
-    }
-
-    private async void OnSaveSettingsClicked(object? sender, EventArgs e)
-    {
-        _modelFilterService.SaveConfig();
-        await DisplayAlertAsync("Settings Saved", "Model filters have been updated and saved.", "OK");
-        _ = RefreshAllAccounts(RefreshQueueLevel.Background); // Refresh to apply changes
-    }
-
-    private void OnResetSettingsClicked(object? sender, EventArgs e)
-    {
-        _modelFilterService.ResetToDefaults();
     }
 
     private async void OnOpenCodexSiteClicked(object? sender, EventArgs e)

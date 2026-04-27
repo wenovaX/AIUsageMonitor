@@ -2,25 +2,49 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
+using System.Diagnostics;
+using System.Net.Http;
+using AIUsageMonitor.Services;
+using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Controls;
 
 namespace AIUsageMonitor.Models;
 
 public class CloudAccount : INotifyPropertyChanged
 {
+    private static readonly HttpClient AvatarHttpClient = CreateAvatarHttpClient();
+
     private ObservableCollection<ModelQuotaInfo> _quotas = new();
     private double _credits;
     private string _access_token = "";
     private ObservableCollection<string> _hiddenModels = new();
+    private string _avatarUrl = "";
     private bool _isSettingsOpen;
     private bool _isAnonymous;
     private bool _isRefreshing;
     private bool _isRefreshQueued;
     private bool _hasError;
+    private bool _hasAvatarImage;
+    private double _cardHeightHint = 320;
+    private ImageSource? _avatarImageSource;
+    private int _avatarLoadVersion;
 
     public string id { get; set; } = Guid.NewGuid().ToString();
     public string name { get; set; } = "";
     public string email { get; set; } = "";
-    public string avatar_url { get; set; } = "";
+    public string avatar_url
+    {
+        get => _avatarUrl;
+        set
+        {
+            if (_avatarUrl == value)
+                return;
+
+            _avatarUrl = value;
+            OnPropertyChanged();
+            _ = LoadAvatarImageAsync(value);
+        }
+    }
     public string provider { get; set; } = "Google";
     
     public string access_token 
@@ -86,6 +110,39 @@ public class CloudAccount : INotifyPropertyChanged
     [JsonIgnore]
     public string DisplayEmail => IsAnonymous ? provider : email;
 
+    [JsonIgnore]
+    public ImageSource? AvatarImageSource
+    {
+        get => _avatarImageSource;
+        private set
+        {
+            _avatarImageSource = value;
+            OnPropertyChanged();
+        }
+    }
+
+    [JsonIgnore]
+    public bool HasAvatarImage
+    {
+        get => _hasAvatarImage;
+        private set
+        {
+            _hasAvatarImage = value;
+            OnPropertyChanged();
+        }
+    }
+
+    [JsonIgnore]
+    public double CardHeightHint
+    {
+        get => _cardHeightHint;
+        set
+        {
+            _cardHeightHint = value;
+            OnPropertyChanged();
+        }
+    }
+
     public ObservableCollection<string> HiddenModels
     {
         get => _hiddenModels;
@@ -114,52 +171,60 @@ public class CloudAccount : INotifyPropertyChanged
         OnPropertyChanged(nameof(VisibilityItems));
     }
 
-    private static readonly List<string> SortOrder = new()
+    private IReadOnlyList<ModelQuotaInfo> GetSortedFilteredQuotas(string category)
     {
-        "Gemini 3 Flash",
-        "Gemini 3.1 Pro (High)",
-        "Gemini 3.1 Pro (Low)",
-        "Claude Opus 4.6",
-        "Claude Sonnet 4.6",
-        "GPT-OSS 120B"
-    };
-
-    private IEnumerable<ModelQuotaInfo> GetSortedFilteredQuotas(string category)
-    {
-        var filtered = quotas.Where(q => !HiddenModels.Contains(q.display_name));
+        var quotaSnapshot = quotas.ToList();
+        var hiddenModels = HiddenModels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        IEnumerable<ModelQuotaInfo> filtered = quotaSnapshot.Where(q =>
+            !hiddenModels.Contains(q.display_name) &&
+            (ModelCatalogService.Instance?.IsEnabled(q.display_name) ?? true));
         
         if (category == "Gemini")
             filtered = filtered.Where(q => q.display_name.Contains("Gemini"));
         else if (category == "Claude")
             filtered = filtered.Where(q => q.display_name.Contains("Claude") || q.display_name.Contains("Anthropic"));
         else
-            filtered = filtered.Where(q => !q.display_name.Contains("Gemini") && !q.display_name.Contains("Claude") && !q.display_name.Contains("Anthropic"));
+            filtered = filtered.Where(q => !q.display_name.Contains("Gemini"));
 
         return filtered.OrderBy(q => {
-            int idx = SortOrder.IndexOf(q.display_name);
-            return idx == -1 ? 999 : idx;
-        });
+            var idx = ModelCatalogService.Instance?.GetSortOrder(q.display_name) ?? int.MaxValue;
+            return idx == int.MaxValue ? 999 : idx;
+        }).ToList();
     }
 
     [JsonIgnore]
-    public IEnumerable<ModelQuotaInfo> GeminiQuotas => GetSortedFilteredQuotas("Gemini");
+    public IReadOnlyList<ModelQuotaInfo> GeminiQuotas => GetSortedFilteredQuotas("Gemini");
     
     [JsonIgnore]
-    public IEnumerable<ModelQuotaInfo> ClaudeQuotas => GetSortedFilteredQuotas("Claude");
+    public IReadOnlyList<ModelQuotaInfo> ClaudeQuotas => GetSortedFilteredQuotas("Claude");
     
     [JsonIgnore]
-    public IEnumerable<ModelQuotaInfo> OtherQuotas => GetSortedFilteredQuotas("Other");
+    public IReadOnlyList<ModelQuotaInfo> OtherQuotas => GetSortedFilteredQuotas("Other");
 
     [JsonIgnore]
-    public IEnumerable<ModelVisibilityItem> VisibilityItems => quotas.Select(q => new ModelVisibilityItem 
-    { 
-        DisplayName = q.display_name, 
-        IsVisible = !HiddenModels.Contains(q.display_name),
-        ParentAccount = this
-    }).OrderBy(v => {
-        int idx = SortOrder.IndexOf(v.DisplayName);
-        return idx == -1 ? 999 : idx;
-    });
+    public IReadOnlyList<ModelVisibilityItem> VisibilityItems
+    {
+        get
+        {
+            var hiddenModels = HiddenModels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return quotas
+                .ToList()
+                .Where(q => ModelCatalogService.Instance?.IsEnabled(q.display_name) ?? true)
+                .Select(q => new ModelVisibilityItem
+                {
+                    DisplayName = q.display_name,
+                    IsVisible = !hiddenModels.Contains(q.display_name),
+                    ParentAccount = this
+                })
+                .OrderBy(v =>
+                {
+                    var idx = ModelCatalogService.Instance?.GetSortOrder(v.DisplayName) ?? int.MaxValue;
+                    return idx == int.MaxValue ? 999 : idx;
+                })
+                .ToList();
+        }
+    }
 
     [JsonIgnore]
     public bool HasGeminiQuotas => GeminiQuotas.Any();
@@ -181,6 +246,65 @@ public class CloudAccount : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    private async Task LoadAvatarImageAsync(string? avatarUrl)
+    {
+        var version = Interlocked.Increment(ref _avatarLoadVersion);
+
+        if (string.IsNullOrWhiteSpace(avatarUrl))
+        {
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (version != _avatarLoadVersion)
+                    return;
+
+                AvatarImageSource = null;
+                HasAvatarImage = false;
+            });
+            return;
+        }
+
+        try
+        {
+            var bytes = await AvatarHttpClient.GetByteArrayAsync(avatarUrl);
+            if (version != _avatarLoadVersion)
+                return;
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (version != _avatarLoadVersion)
+                    return;
+
+                AvatarImageSource = ImageSource.FromStream(() => new MemoryStream(bytes));
+                HasAvatarImage = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Avatar] Failed to load {avatarUrl}: {ex.Message}");
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (version != _avatarLoadVersion)
+                    return;
+
+                AvatarImageSource = null;
+                HasAvatarImage = false;
+            });
+        }
+    }
+
+    private static HttpClient CreateAvatarHttpClient()
+    {
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 AIUsageMonitor");
+        return client;
+    }
+}
+
+public class GoogleAccountRow
+{
+    public ObservableCollection<CloudAccount> Accounts { get; } = new();
 }
 
 public class ModelVisibilityItem : INotifyPropertyChanged

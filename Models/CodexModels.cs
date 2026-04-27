@@ -27,6 +27,7 @@ public class CodexAccount : INotifyPropertyChanged
 	private int _secondaryUsedPercent;
 	private string _secondaryWindowLabel = "Reset Date";
 	private string _secondaryResetDate = string.Empty;
+	private string _secondaryResetDescription = string.Empty;
 
 	public string id { get; set; } = Guid.NewGuid().ToString();
 
@@ -82,41 +83,90 @@ public class CodexAccount : INotifyPropertyChanged
 	public int primaryUsedPercent 
 	{ 
 		get => _primaryUsedPercent; 
-		set { _primaryUsedPercent = value; OnPropertyChanged(); OnPropertyChanged(nameof(PrimaryRemainingPercent)); } 
+		set
+		{
+			_primaryUsedPercent = value;
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(PrimaryRemainingPercent));
+			OnPropertyChanged(nameof(EffectiveRemainingPercent));
+			OnPropertyChanged(nameof(IsRateLimited));
+			OnPropertyChanged(nameof(PrimaryStatusText));
+		}
 	}
 
 	public string primaryWindowLabel 
 	{ 
 		get => _primaryWindowLabel; 
-		set { _primaryWindowLabel = value; OnPropertyChanged(); } 
+		set
+		{
+			_primaryWindowLabel = value;
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(UsageLimitBadgeText));
+			OnPropertyChanged(nameof(HasUsageLimitBadge));
+		}
 	}
 
 	public string primaryResetDescription 
 	{ 
 		get => _primaryResetDescription; 
-		set { _primaryResetDescription = value; OnPropertyChanged(); } 
+		set
+		{
+			_primaryResetDescription = value;
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(PrimaryStatusText));
+		}
 	}
 
 	// Secondary Window (shows reset date)
 	public int secondaryUsedPercent 
 	{ 
 		get => _secondaryUsedPercent; 
-		set { _secondaryUsedPercent = value; OnPropertyChanged(); } 
+		set
+		{
+			_secondaryUsedPercent = value;
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(IsWeeklyBlocked));
+			OnPropertyChanged(nameof(EffectiveRemainingPercent));
+			OnPropertyChanged(nameof(IsRateLimited));
+			OnPropertyChanged(nameof(PrimaryStatusText));
+		}
 	}
 
 	public string secondaryWindowLabel 
 	{ 
 		get => _secondaryWindowLabel; 
-		set {
-            _secondaryWindowLabel = string.IsNullOrWhiteSpace(value) ? string.Empty : $"{value} ";
-			OnPropertyChanged(); 
-		} 
+		set
+		{
+            _secondaryWindowLabel = string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(SecondaryResetHeader));
+			OnPropertyChanged(nameof(IsWeeklyBlocked));
+			OnPropertyChanged(nameof(EffectiveRemainingPercent));
+			OnPropertyChanged(nameof(IsRateLimited));
+			OnPropertyChanged(nameof(PrimaryStatusText));
+		}
 	}
 
 	public string secondaryResetDate 
 	{ 
 		get => _secondaryResetDate; 
-		set { _secondaryResetDate = value; OnPropertyChanged(); } 
+		set
+		{
+			_secondaryResetDate = value;
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(PrimaryStatusText));
+		}
+	}
+
+	public string secondaryResetDescription
+	{
+		get => _secondaryResetDescription;
+		set
+		{
+			_secondaryResetDescription = value;
+			OnPropertyChanged();
+			OnPropertyChanged(nameof(PrimaryStatusText));
+		}
 	}
 
 	// Anonymous Mode
@@ -169,7 +219,46 @@ public class CodexAccount : INotifyPropertyChanged
 	public int PrimaryRemainingPercent => Math.Max(0, 100 - primaryUsedPercent);
 
 	[JsonIgnore]
-	public bool IsRateLimited => PrimaryRemainingPercent <= 1;
+	public int EffectiveRemainingPercent => IsWeeklyBlocked ? 0 : PrimaryRemainingPercent;
+
+	[JsonIgnore]
+	public bool IsPrimaryWindowExhausted => PrimaryRemainingPercent <= 1;
+
+	[JsonIgnore]
+	public bool IsWeeklyBlocked =>
+		string.Equals(secondaryWindowLabel, "Weekly", StringComparison.OrdinalIgnoreCase) &&
+		secondaryUsedPercent >= 100;
+
+	[JsonIgnore]
+	public string PrimaryStatusText => IsWeeklyBlocked
+		? $"Weekly reset: {secondaryResetDescription}"
+		: $"Resets: {primaryResetDescription}";
+
+	[JsonIgnore]
+	public string SecondaryResetHeader => string.IsNullOrWhiteSpace(secondaryWindowLabel)
+		? string.Empty
+		: $"{secondaryWindowLabel} RESET";
+
+	[JsonIgnore]
+	public string UsageLimitBadgeText
+	{
+		get
+		{
+			if (IsWeeklyBlocked && IsPrimaryWindowExhausted)
+				return "WEEKLY + 5H";
+			if (IsWeeklyBlocked)
+				return "WEEKLY LIMITED";
+			if (IsPrimaryWindowExhausted)
+				return $"{primaryWindowLabel.ToUpperInvariant()} LIMITED";
+			return string.Empty;
+		}
+	}
+
+	[JsonIgnore]
+	public bool HasUsageLimitBadge => !string.IsNullOrWhiteSpace(UsageLimitBadgeText);
+
+	[JsonIgnore]
+	public bool IsRateLimited => EffectiveRemainingPercent <= 1;
 
 	[JsonIgnore]
 	public string PlanDisplay => string.IsNullOrEmpty(plan_type) ? "—" : 

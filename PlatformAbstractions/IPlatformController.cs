@@ -6,8 +6,10 @@ public interface IPlatformController
 {
     bool SupportsTray { get; }
     bool IsWindowVisible { get; }
+    bool IsWindowResizeInProgress { get; }
 
     event EventHandler? WindowVisibilityChanged;
+    event EventHandler? WindowResizeCompleted;
 
     void Initialize(Window window);
     void ConfigureTrayIcon(object trayIcon, ICommand showCommand, ICommand exitCommand, ICommand activateCommand);
