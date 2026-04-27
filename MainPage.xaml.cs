@@ -1,16 +1,28 @@
-using AIUsageMonitor.Services;
 using AIUsageMonitor.Models;
-using AIUsageMonitor.Selectors;
+using AIUsageMonitor.PlatformAbstractions;
+using AIUsageMonitor.Services;
+using H.NotifyIcon;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Windows.Input;
+#if WINDOWS
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
+using VirtualKey = Windows.System.VirtualKey;
+#endif
 
 namespace AIUsageMonitor;
 
 public partial class MainPage : ContentPage
 {
+    private enum RefreshQueueLevel
+    {
+        Immediate,
+        Background
+    }
+
     private readonly ModelFilterService _modelFilterService = new();
     private readonly GoogleRadarService _googleRadar;
     private readonly AccountManagerService _accountManager = new();
@@ -18,6 +30,7 @@ public partial class MainPage : ContentPage
     private readonly CodexOAuthService _codexOAuth = new();
     private readonly OpenAIAuthService _openAIAuth = new();
     private readonly CodexApiService _codexApi = new();
+    private readonly PlatformManager _platformManager;
 
     public ObservableCollection<ModelFilterEntry> FilterEntries => _modelFilterService.TrackedModels;
 
@@ -70,21 +83,28 @@ public partial class MainPage : ContentPage
         set { _isBusy = value; OnPropertyChanged(); }
     }
 
-    private bool _isRefreshing;
-    public bool IsRefreshing
+
+    public bool MinimizeToTray
     {
-        get => _isRefreshing;
-        set { _isRefreshing = value; OnPropertyChanged(); }
+        get => _platformManager.Current.GetMinimizeToTray();
+        set { _platformManager.Current.SetMinimizeToTray(value); OnPropertyChanged(); }
     }
 
-    private bool _showRetryButton;
-    public bool ShowRetryButton
+    public bool RememberCloseChoice
     {
-        get => _showRetryButton;
-        set { _showRetryButton = value; OnPropertyChanged(); }
+        get => _platformManager.Current.GetRememberCloseChoice();
+        set { _platformManager.Current.SetRememberCloseChoice(value); OnPropertyChanged(); }
     }
 
-    private CancellationTokenSource? _refreshCts;
+    private readonly SemaphoreSlim _globalRefreshSemaphore;
+    private readonly SemaphoreSlim _googleRefreshSemaphore;
+    private readonly SemaphoreSlim _codexRefreshSemaphore;
+    private readonly int _maxGlobalRefreshConcurrency;
+    private readonly int _maxGoogleRefreshConcurrency;
+    private readonly int _maxCodexRefreshConcurrency;
+#if WINDOWS
+    private Microsoft.UI.Xaml.Window? _platformWindow;
+#endif
 
     private bool _isLoginWaiting;
     public bool IsLoginWaiting
@@ -93,7 +113,7 @@ public partial class MainPage : ContentPage
         set { _isLoginWaiting = value; OnPropertyChanged(); }
     }
 
-    public const string AppVersion = "1.0.1";
+    public const string AppVersion = "1.0.3";
     public string DisplayVersion => $"v{AppVersion}";
 
     private CancellationTokenSource? _loginCts;
@@ -113,10 +133,10 @@ public partial class MainPage : ContentPage
         ? CodexAccounts.Count 
         : Accounts.Sum(a => a.quotas.Count(q => !a.HiddenModels.Contains(q.display_name)));
     public int GlobalActive => CurrentTab == "Codex" 
-        ? CodexAccounts.Count(a => a.PrimaryRemainingPercent > 0)
+        ? CodexAccounts.Count(a => !a.IsRateLimited)
         : Accounts.Sum(a => a.quotas.Count(q => !a.HiddenModels.Contains(q.display_name) && q.percentage > 0));
     public int GlobalLimited => CurrentTab == "Codex" 
-        ? CodexAccounts.Count(a => a.PrimaryRemainingPercent == 0)
+        ? CodexAccounts.Count(a => a.IsRateLimited)
         : Accounts.Sum(a => a.quotas.Count(q => !a.HiddenModels.Contains(q.display_name) && q.percentage == 0));
     public int GlobalQuota => CurrentTab == "Codex" 
         ? (CodexAccounts.Count == 0 ? 0 : (int)CodexAccounts.Average(a => a.PrimaryRemainingPercent))
@@ -125,12 +145,90 @@ public partial class MainPage : ContentPage
     public ObservableCollection<CloudAccount> Accounts => _accountManager.Accounts;
     public ObservableCollection<CodexAccount> CodexAccounts => _codexAccountManager.Accounts;
 
+    private bool _isMinimizedToTray = false;
+
     public MainPage()
     {
+        _platformManager = MauiProgram.Services.GetRequiredService<PlatformManager>();
+        (_maxGlobalRefreshConcurrency, _maxGoogleRefreshConcurrency, _maxCodexRefreshConcurrency) = CalculateRefreshConcurrency();
+        _globalRefreshSemaphore = new SemaphoreSlim(_maxGlobalRefreshConcurrency, _maxGlobalRefreshConcurrency);
+        _googleRefreshSemaphore = new SemaphoreSlim(_maxGoogleRefreshConcurrency, _maxGoogleRefreshConcurrency);
+        _codexRefreshSemaphore = new SemaphoreSlim(_maxCodexRefreshConcurrency, _maxCodexRefreshConcurrency);
+        Debug.WriteLine($"Refresh queue initialized. Global={_maxGlobalRefreshConcurrency}, Google={_maxGoogleRefreshConcurrency}, Codex={_maxCodexRefreshConcurrency}");
+
         _googleRadar = new GoogleRadarService(_modelFilterService);
         InitializeComponent();
         BindingContext = this;
-        _ = RefreshAllAccounts();
+        Loaded += OnLoaded;
+        HandlerChanged += OnHandlerChanged;
+        
+        ShowAppCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
+        ExitAppCommand = new Command(() => OnExitAppFromTray(null, EventArgs.Empty));
+        DoubleClickTrayIconCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
+
+        _platformManager.Current.WindowVisibilityChanged += OnPlatformWindowVisibilityChanged;
+
+        _ = RefreshAllAccounts(RefreshQueueLevel.Background);
+    }
+
+    public ICommand ShowAppCommand { get; }
+    public ICommand ExitAppCommand { get; }
+    public ICommand DoubleClickTrayIconCommand { get; }
+
+    private void OnLoaded(object? sender, EventArgs e)
+    {
+        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
+    }
+
+    private void OnHandlerChanged(object? sender, EventArgs e)
+    {
+        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
+#if WINDOWS
+        AttachRefreshKeyboardShortcut();
+#endif
+    }
+
+    private static (int Global, int Google, int Codex) CalculateRefreshConcurrency()
+    {
+        var processorCount = Environment.ProcessorCount;
+        var global = processorCount >= 8 ? 3 : 2;
+        var google = Math.Min(2, global);
+        var codex = global;
+
+        return (global, google, codex);
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _platformManager.Current.ConfigureTrayIcon(TrayIcon, ShowAppCommand, ExitAppCommand, DoubleClickTrayIconCommand);
+#if WINDOWS
+        AttachRefreshKeyboardShortcut();
+#endif
+    }
+
+    private void OnShowAppFromTray(object? sender, EventArgs e)
+    {
+        _platformManager.Current.ShowMainWindow();
+    }
+
+    private void OnExitAppFromTray(object? sender, EventArgs e)
+    {
+        _platformManager.Current.ExitApplication();
+    }
+
+    private void OnPlatformWindowVisibilityChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _isMinimizedToTray = !_platformManager.Current.IsWindowVisible;
+
+            if (!_isMinimizedToTray)
+            {
+                _ = RefreshAllAccounts(RefreshQueueLevel.Background);
+                _ = RefreshAllCodexAccounts(RefreshQueueLevel.Background);
+            }
+        });
     }
 
     private void OnTabClicked(object? sender, EventArgs e)
@@ -337,7 +435,7 @@ public partial class MainPage : ContentPage
                 "Open Browser");
 
             // Open browser
-            await Launcher.OpenAsync(deviceCodeResponse.VerificationUri);
+            await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync(deviceCodeResponse.VerificationUri);
 
             // Start polling
             using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(_loginCts.Token);
@@ -392,18 +490,115 @@ public partial class MainPage : ContentPage
 
     private async void OnRefreshAllClicked(object? sender, EventArgs e)
     {
-        if (CurrentTab == "Codex")
-            await RefreshAllCodexAccounts();
-        else
-            await RefreshAllAccounts();
+        await RefreshCurrentTabAsync();
     }
 
-    private async Task RefreshAllAccounts()
+    private async Task RefreshCurrentTabAsync()
+    {
+        if (CurrentTab == "Codex")
+            await RefreshAllCodexAccounts(RefreshQueueLevel.Background);
+        else
+            await RefreshAllAccounts(RefreshQueueLevel.Background);
+    }
+
+#if WINDOWS
+    private void AttachRefreshKeyboardShortcut()
+    {
+        var platformWindow = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Handler?.PlatformView as Microsoft.UI.Xaml.Window;
+        if (platformWindow is null || ReferenceEquals(_platformWindow, platformWindow))
+            return;
+
+        if (_platformWindow?.Content is UIElement previousRoot)
+        {
+            previousRoot.KeyDown -= OnWindowKeyDown;
+        }
+
+        _platformWindow = platformWindow;
+
+        if (_platformWindow.Content is UIElement rootElement)
+        {
+            rootElement.KeyDown -= OnWindowKeyDown;
+            rootElement.KeyDown += OnWindowKeyDown;
+        }
+    }
+
+    private async void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.F5)
+            return;
+
+        e.Handled = true;
+        await RefreshCurrentTabAsync();
+    }
+#endif
+
+    private async Task EnqueueRefreshAsync(object account, RefreshQueueLevel queueLevel = RefreshQueueLevel.Background)
+    {
+        if (account is CloudAccount g)
+        {
+            if (g.IsRefreshing || g.IsRefreshQueued) return;
+            g.IsRefreshQueued = true;
+            g.HasError = false;
+        }
+        else if (account is CodexAccount c)
+        {
+            if (c.IsRefreshing || c.IsRefreshQueued) return;
+            c.IsRefreshQueued = true;
+            c.HasError = false;
+        }
+
+        var providerSemaphore = account is CloudAccount
+            ? _googleRefreshSemaphore
+            : _codexRefreshSemaphore;
+
+        if (queueLevel == RefreshQueueLevel.Background)
+        {
+            await Task.Delay(100);
+        }
+
+        await _globalRefreshSemaphore.WaitAsync();
+        await providerSemaphore.WaitAsync();
+        try
+        {
+            // Abort if minimized, but clear the queued state
+            if (_isMinimizedToTray) return;
+
+            if (account is CloudAccount googleAcc)
+            {
+                googleAcc.IsRefreshQueued = false;
+                googleAcc.IsRefreshing = true;
+                try
+                {
+                    await RetryAsync(async () => await _googleRadar.UpdateAccountDataAsync(googleAcc), 3, 15);
+                }
+                catch { googleAcc.HasError = true; }
+                finally { googleAcc.IsRefreshing = false; }
+            }
+            else if (account is CodexAccount codexAcc)
+            {
+                codexAcc.IsRefreshQueued = false;
+                codexAcc.IsRefreshing = true;
+                try
+                {
+                    await RetryAsync(async () => await UpdateCodexAccountData(codexAcc), 3, 15);
+                }
+                catch { codexAcc.HasError = true; }
+                finally { codexAcc.IsRefreshing = false; }
+            }
+        }
+        finally
+        {
+            // Always ensure queued state is cleared
+            if (account is CloudAccount g2) g2.IsRefreshQueued = false;
+            if (account is CodexAccount c2) c2.IsRefreshQueued = false;
+            providerSemaphore.Release();
+            _globalRefreshSemaphore.Release();
+        }
+    }
+
+    private async Task RefreshAllAccounts(RefreshQueueLevel queueLevel = RefreshQueueLevel.Background)
     {
         if (Accounts.Count == 0) return;
-
-        IsRefreshing = true;
-        ShowRetryButton = false;
         try
         {
             var uniqueAccounts = Accounts.GroupBy(a => a.email.ToLower()).Select(g => g.First()).ToList();
@@ -413,12 +608,9 @@ public partial class MainPage : ContentPage
                 foreach (var acc in uniqueAccounts) Accounts.Add(acc);
             }
 
-            await RetryAsync(async () =>
-            {
-                var tasks = Accounts.Select(acc => _googleRadar.UpdateAccountDataAsync(acc)).ToList();
-                await Task.WhenAll(tasks);
-            }, maxRetries: 3, timeoutSeconds: 10);
-            
+            var tasks = Accounts.Select(acc => EnqueueRefreshAsync(acc, queueLevel)).ToList();
+            await Task.WhenAll(tasks);
+
             _accountManager.SaveAccounts();
             UpdateDisplayIndices();
             NotifyStatsChanged();
@@ -426,27 +618,16 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Debug.WriteLine($"Refresh error: {ex.Message}");
-            ShowRetryButton = true;
-        }
-        finally
-        {
-            if (!ShowRetryButton) IsRefreshing = false;
         }
     }
 
-    private async Task RefreshAllCodexAccounts()
+    private async Task RefreshAllCodexAccounts(RefreshQueueLevel queueLevel = RefreshQueueLevel.Background)
     {
         if (CodexAccounts.Count == 0) return;
-
-        IsRefreshing = true;
-        ShowRetryButton = false;
         try
         {
-            await RetryAsync(async () =>
-            {
-                var tasks = CodexAccounts.Select(acc => UpdateCodexAccountData(acc)).ToList();
-                await Task.WhenAll(tasks);
-            }, maxRetries: 3, timeoutSeconds: 10);
+            var tasks = CodexAccounts.Select(acc => EnqueueRefreshAsync(acc, queueLevel)).ToList();
+            await Task.WhenAll(tasks);
 
             _codexAccountManager.SaveAccounts();
             UpdateCodexDisplayIndices();
@@ -454,24 +635,16 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Debug.WriteLine($"Codex refresh error: {ex.Message}");
-            ShowRetryButton = true;
-        }
-        finally
-        {
-            if (!ShowRetryButton) IsRefreshing = false;
         }
     }
 
     private async Task RetryAsync(Func<Task> action, int maxRetries, int timeoutSeconds)
     {
-        _refreshCts?.Cancel();
-        _refreshCts = new CancellationTokenSource();
-
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_refreshCts.Token);
+                using var timeoutCts = new CancellationTokenSource();
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
                 var task = action();
@@ -479,16 +652,12 @@ public partial class MainPage : ContentPage
 
                 if (completedTask == task)
                 {
+                    timeoutCts.Cancel(); // Clean up the Delay task
                     await task; // Propagate exceptions
                     return;     // Success
                 }
 
                 throw new TimeoutException($"Attempt {attempt}/{maxRetries} timed out.");
-            }
-            catch (OperationCanceledException) when (_refreshCts.IsCancellationRequested)
-            {
-                Debug.WriteLine("[Retry] User cancelled.");
-                return;
             }
             catch (Exception ex)
             {
@@ -499,21 +668,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private async void OnRetryClicked(object? sender, EventArgs e)
-    {
-        ShowRetryButton = false;
-        if (CurrentTab == "Codex")
-            await RefreshAllCodexAccounts();
-        else
-            await RefreshAllAccounts();
-    }
 
-    private void OnCancelRefreshClicked(object? sender, EventArgs e)
-    {
-        _refreshCts?.Cancel();
-        ShowRetryButton = false;
-        IsRefreshing = false;
-    }
 
     private async Task UpdateCodexAccountData(CodexAccount account)
     {
@@ -621,15 +776,9 @@ public partial class MainPage : ContentPage
         if (e.Parameter is CodexAccount account)
         {
             IsBusy = true;
-            try
-            {
-                await UpdateCodexAccountData(account);
-                _codexAccountManager.SaveAccounts();
-            }
-            finally
-            {
-                IsBusy = false;
-            }
+            await EnqueueRefreshAsync(account, RefreshQueueLevel.Immediate);
+            _codexAccountManager.SaveAccounts();
+            IsBusy = false;
         }
     }
 
@@ -638,16 +787,10 @@ public partial class MainPage : ContentPage
         if (e.Parameter is CloudAccount account)
         {
             IsBusy = true;
-            try
-            {
-                await _googleRadar.UpdateAccountDataAsync(account);
-                _accountManager.SaveAccounts();
-                NotifyStatsChanged();
-            }
-            finally
-            {
-                IsBusy = false;
-            }
+            await EnqueueRefreshAsync(account, RefreshQueueLevel.Immediate);
+            _accountManager.SaveAccounts();
+            NotifyStatsChanged();
+            IsBusy = false;
         }
     }
 
@@ -809,7 +952,7 @@ public partial class MainPage : ContentPage
     {
         _modelFilterService.SaveConfig();
         await DisplayAlertAsync("Settings Saved", "Model filters have been updated and saved.", "OK");
-        _ = RefreshAllAccounts(); // Refresh to apply changes
+        _ = RefreshAllAccounts(RefreshQueueLevel.Background); // Refresh to apply changes
     }
 
     private void OnResetSettingsClicked(object? sender, EventArgs e)
@@ -819,6 +962,6 @@ public partial class MainPage : ContentPage
 
     private async void OnOpenCodexSiteClicked(object? sender, EventArgs e)
     {
-        await Launcher.OpenAsync("https://openai.com/codex/");
+        await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://openai.com/codex/");
     }
 }

@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:models="clr-namespace:AIUsageMonitor.Models"
              xmlns:converters="clr-namespace:AIUsageMonitor.Converters"
+             xmlns:h="clr-namespace:H.NotifyIcon;assembly=H.NotifyIcon.Maui"
              x:Class="AIUsageMonitor.MainPage"
              BackgroundColor="#0f172a"
              Title="">
@@ -129,6 +130,13 @@
     </ContentPage.Resources>
 
     <Grid ColumnDefinitions="80, *">
+        <!-- System Tray Icon -->
+        <h:TaskbarIcon x:Name="TrayIcon"
+                       ToolTipText="AIUsageMonitor"
+                       MenuActivation="RightClick"
+                       NoLeftClickDelay="True"
+                       DoubleClickCommand="{Binding DoubleClickTrayIconCommand}" />
+
         <!-- LEFT SIDE TRAY MENU -->
         <Border Grid.Column="0" BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}">
             <Grid RowDefinitions="*, Auto">
@@ -203,11 +211,21 @@
                         <Button Text="Export" Clicked="OnExportClicked" Style="{StaticResource UtilityButtonStyle}" />
                         <Button Text="Import" Clicked="OnImportClicked" Style="{StaticResource UtilityButtonStyle}" />
                         <Button Text="+ Add Account" Clicked="OnLoginClicked" BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" CornerRadius="6" HeightRequest="34" Padding="18,0" FontSize="12" />
-                        
-                        <Border Style="{StaticResource IconButtonStyle}" WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 18">
-                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshAllClicked" /></Border.GestureRecognizers>
-                            <Label Text="↻" TextColor="{StaticResource Slate100}" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,0,0,2" />
-                        </Border>
+
+                        <Grid WidthRequest="36" HeightRequest="50">
+                            <Border Style="{StaticResource IconButtonStyle}" WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 18">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnRefreshAllClicked" />
+                                </Border.GestureRecognizers>
+                                <Label Text="↻"
+                                   TextColor="{StaticResource Slate100}"
+                                   FontSize="22"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   Margin="0,0,0,2" />
+                            </Border>
+                            <Label Text="F5" FontSize="10" TextColor="{StaticResource Slate500}" HorizontalOptions="Center" VerticalOptions="Start" Margin="0,36,0,0" />
+                        </Grid>
                     </HorizontalStackLayout>
                 </Grid>
             </Border>
@@ -251,7 +269,7 @@
                                 <!-- Card Header -->
                                 <VerticalStackLayout>
                                     <!-- Avatar and Email -->
-                                    <Grid ColumnDefinitions="30, *" Padding="14,12">
+                                    <Grid ColumnDefinitions="30, *, Auto" Padding="14,12">
                                         <Grid>
                                             <Border IsVisible="{Binding IsAnonymous, Converter={StaticResource InverseBoolConverter}}" HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" StrokeThickness="0">
                                                 <Image Source="{Binding avatar_url}" Aspect="AspectFill" />
@@ -264,6 +282,12 @@
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="12" TextColor="{StaticResource Slate50}" LineBreakMode="TailTruncation" />
                                             <Label Text="{Binding DisplayEmail}" FontSize="9" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" />
                                         </VerticalStackLayout>
+                                        <!-- Loading & Error Indicator -->
+                                        <HorizontalStackLayout Grid.Column="2" Spacing="5" VerticalOptions="Center">
+                                            <Label Text="⏳ Waiting" TextColor="{StaticResource Slate400}" FontSize="10" FontAttributes="Bold" IsVisible="{Binding IsRefreshQueued}" VerticalOptions="Center" />
+                                            <ActivityIndicator IsRunning="{Binding IsRefreshing}" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
+                                            <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" IsVisible="{Binding HasError}" ToolTipProperties.Text="Failed to update account" VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
                                     </Grid>
                                     
                                     <!-- Actions & Credits -->
@@ -359,7 +383,7 @@
                                 <!-- Card Header -->
                                 <VerticalStackLayout>
                                     <!-- Avatar and Name/Email -->
-                                    <Grid ColumnDefinitions="30, *" Padding="14,12">
+                                    <Grid ColumnDefinitions="30, *, Auto" Padding="14,12">
                                         <Border HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" BackgroundColor="{StaticResource Slate700}">
                                             <Label Text="{Binding DisplayName, Converter={StaticResource AnonymousAvatarConverter}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" />
                                         </Border>
@@ -367,6 +391,12 @@
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="12" TextColor="{StaticResource Slate50}" LineBreakMode="TailTruncation" />
                                             <Label Text="{Binding DisplayEmail}" FontSize="9" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" />
                                         </VerticalStackLayout>
+                                        <!-- Loading & Error Indicator -->
+                                        <HorizontalStackLayout Grid.Column="2" Spacing="5" VerticalOptions="Center">
+                                            <Label Text="⏳ Waiting" TextColor="{StaticResource Slate400}" FontSize="10" FontAttributes="Bold" IsVisible="{Binding IsRefreshQueued}" VerticalOptions="Center" />
+                                            <ActivityIndicator IsRunning="{Binding IsRefreshing}" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
+                                            <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" IsVisible="{Binding HasError}" ToolTipProperties.Text="Failed to update account" VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
                                     </Grid>
                                     
                                     <!-- Actions & Plan -->
@@ -472,6 +502,31 @@
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <!-- App Settings -->
+                    <VerticalStackLayout Spacing="15">
+                        <Label Text="APP SETTINGS" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
+                        
+                        <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <VerticalStackLayout VerticalOptions="Center">
+                                    <Label Text="Minimize to Tray on Close" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                    <Label Text="Default action when closing if choice is remembered." FontSize="12" TextColor="{StaticResource Slate400}" />
+                                </VerticalStackLayout>
+                                <Switch Grid.Column="1" IsToggled="{Binding MinimizeToTray}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <VerticalStackLayout VerticalOptions="Center">
+                                    <Label Text="Remember Close Choice" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                    <Label Text="If disabled, pressing X will prompt you every time." FontSize="12" TextColor="{StaticResource Slate400}" />
+                                </VerticalStackLayout>
+                                <Switch Grid.Column="1" IsToggled="{Binding RememberCloseChoice}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
                     </VerticalStackLayout>
 
                     <!-- Add New -->
@@ -596,20 +651,7 @@
                 </Border>
             </Grid>
 
-            <!-- Loading Overlay -->
-            <Grid Grid.RowSpan="3" BackgroundColor="#990f172a" IsVisible="{Binding IsRefreshing}">
-                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="20">
-                    <ActivityIndicator IsRunning="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="60" HeightRequest="60" />
-                    <Label Text="Updating Quotas..." TextColor="{StaticResource Slate100}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" IsVisible="{Binding ShowRetryButton, Converter={StaticResource InverseBoolConverter}}" />
-                    
-                    <!-- Retry State -->
-                    <Label Text="Request timed out after 3 attempts." TextColor="{StaticResource Rose500}" FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" IsVisible="{Binding ShowRetryButton}" />
-                    <HorizontalStackLayout Spacing="12" HorizontalOptions="Center" IsVisible="{Binding ShowRetryButton}">
-                        <Button Text="Retry" Clicked="OnRetryClicked" BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" CornerRadius="8" HeightRequest="36" Padding="24,0" FontSize="12" FontAttributes="Bold" />
-                        <Button Text="Cancel" Clicked="OnCancelRefreshClicked" BackgroundColor="{StaticResource Slate700}" TextColor="{StaticResource Slate100}" CornerRadius="8" HeightRequest="36" Padding="24,0" FontSize="12" />
-                    </HorizontalStackLayout>
-                </VerticalStackLayout>
-            </Grid>
+
             <!-- Login Waiting Overlay -->
             <Grid Grid.RowSpan="3" BackgroundColor="#CC0f172a" IsVisible="{Binding IsLoginWaiting}">
                 <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="16">

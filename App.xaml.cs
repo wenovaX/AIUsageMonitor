@@ -1,34 +1,36 @@
+using AIUsageMonitor.PlatformAbstractions;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace AIUsageMonitor
 {
     public partial class App : Application
     {
+        private Window? _mainWindow;
+        private readonly PlatformManager _platformManager;
+
         public App()
         {
+            _platformManager = MauiProgram.Services.GetRequiredService<PlatformManager>();
             InitializeComponent();
         }
 
+
         protected override Window CreateWindow(IActivationState? activationState)
         {
-            var window = new Window(new AppShell());
+            _mainWindow = new Window(new AppShell());
+            _platformManager.Current.Initialize(_mainWindow);
 
-            // Set window size for Windows platform based on adjusted card height and layout
-#if WINDOWS
-            window.Width = Preferences.Default.Get("WindowWidth", 1130.0);
-            window.Height = Preferences.Default.Get("WindowHeight", 900.0);
+            return _mainWindow;
+        }
 
-            window.MinimumWidth = 850;
-            window.MinimumHeight = 700;
-            
-            window.Title = "AIUsageMonitor";
+        private void OnShowAppClicked(object sender, EventArgs e)
+        {
+            _platformManager.Current.ShowMainWindow();
+        }
 
-            window.Destroying += (s, e) =>
-            {
-                Preferences.Default.Set("WindowWidth", window.Width);
-                Preferences.Default.Set("WindowHeight", window.Height);
-            };
-#endif
-
-            return window;
+        private void OnExitClicked(object sender, EventArgs e)
+        {
+            _platformManager.Current.ExitApplication();
         }
     }
 }

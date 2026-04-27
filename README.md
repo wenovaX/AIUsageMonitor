@@ -1,67 +1,84 @@
-# 📡 AIUsageMonitor
+# AIUsageMonitor
 
-> **Premium AI Usage Monitoring Dashboard**  
-> Effortlessly track your quotas and limits across Antigravity and OpenAI Codex in one sleek, unified interface.
+> Premium AI usage monitoring dashboard for Antigravity and Codex.
 
 ![AIUsageMonitor Header](Resources/Images/app_title.png)
 
-## ✨ Overview
+## Overview
 
-AIUsageMonitor is a .NET MAUI-based desktop application designed for AI power users who manage multiple accounts and models. It provides real-time visibility into usage percentages, reset times, and credit balances, ensuring you never hit an unexpected limit during critical work.
+AIUsageMonitor is a .NET MAUI desktop app for tracking usage, limits, and quota windows across multiple AI accounts in one place. It is currently tuned for Windows desktop usage.
 
-## 🖼️ Screenshots
+## Screenshots
 
 | Antigravity (Google) | Codex (OpenAI/GitHub) |
 | :---: | :---: |
 | ![Antigravity Preview](Preview/Preview-Antigravity.png) | ![Codex Preview](Preview/Preview-Codex.png) |
 
 ## Download
-👉 Go to Releases and download the latest version.
 
-## 🚀 Key Features
+Download the latest build from the Releases page.
 
-### 🏢 Multi-Service Support
-- **Antigravity (Google)**: Track Gemini 3 Flash, 3.1 Pro (High/Low), Claude Opus/Sonnet 4.6, and GPT-OSS 120B.
-- **Codex (OpenAI/GitHub)**: Monitor session-based limits and weekly quotas with intelligent window normalization.
+## Key Features
 
-### 🎨 Premium User Experience
-- **Modern Dark UI**: A sleek, Slate-based dark theme with vibrant emerald and sky-blue accents.
-- **Anonymous Mode**: Instantly mask your personal information (name, email) for privacy or screen sharing.
-- **Tabbed Interface**: Seamlessly switch between Google models, Codex accounts, and settings.
+### Multi-service support
+- Antigravity account and model usage tracking
+- Codex session and weekly quota monitoring
+- Unified dashboard for mixed account setups
 
-### ⚙️ Full Customization
-- **Model Filters**: Define your own tracking keywords and display names.
-- **Flexible Ordering**: Reorder model cards to prioritize what matters most to you.
-- **Auto-Refresh & Retry**: Built-in reliability with configurable retry logic and manual refresh options.
+### Windows tray workflow
+- Tray icon with left click and double click restore
+- Close-to-tray behavior with exit confirmation
+- Optional remember-choice flow when closing the window
+- Tray notification when the app is sent to the background through the close dialog
 
-## 🛠️ Setup & Installation
+### Refresh and monitoring
+- Manual full refresh from the header
+- `F5` keyboard shortcut for full refresh on the current tab
+- Background refresh queue with limited concurrency for better responsiveness
+- Retry-aware refresh behavior for network-driven account updates
 
-### Prerequisites
-- .NET 8.0 or 10.0 SDK
-- Windows 10/11 (for the desktop app)
+### Privacy and usability
+- Anonymous mode for screen sharing
+- Model filter customization
+- Tabbed UI for Google, Codex, Settings, and About
 
-### Building from Source
+## Requirements
+
+- .NET 10.0 SDK
+- Visual Studio 2022 with .NET MAUI workload
+- Windows 10/11
+
+## Build from Source
+
 1. Clone the repository.
 2. Open `AIUsageMonitor.sln` in Visual Studio 2022.
 3. Restore NuGet packages.
-4. Build and Run (Target: Windows Machine).
+4. Run the `Windows Machine` target.
 
-## 🔑 Authentication Guide
+## Authentication
 
 ### Antigravity (Google)
-1. Ensure the Antigravity extension is installed and signed in within your IDE.
-2. Click the **(+)** button in the Antigravity tab.
-3. Complete the Google OAuth flow in your browser.
+1. Open the Antigravity tab.
+2. Click `+ Add Account`.
+3. Complete the Google OAuth flow in the browser.
 
 ### Codex (OpenAI / GitHub)
-1. Switch to the **Codex** tab and click **(+)**.
-2. **OpenAI Login**: Uses PKCE OAuth flow for direct OpenAI account access.
-3. **GitHub Login**: Uses Device Flow for users accessing models via GitHub Copilot.
+1. Open the Codex tab.
+2. Click `+ Add Account`.
+3. Choose OpenAI login, GitHub login, or manual token entry.
 
-## 🛡️ Privacy & Security
-- **Local Storage**: All account tokens and configurations are stored locally on your machine.
-- **No Middleman**: The app communicates directly with Google and OpenAI APIs.
-- **Open Source**: Review the code to ensure your tokens are handled securely.
+## Notes
 
-## 📄 License
-Distributed under the MIT License. See `LICENSE` for more information.
+- Version: `v1.0.3`
+- Windows tray behavior is handled through the platform controller layer.
+- The tray icon is shipped as `trayicon.ico` for more reliable Windows system tray rendering.
+
+## Privacy
+
+- Tokens and settings are stored locally.
+- The app talks directly to provider endpoints.
+- Review the source before using it with sensitive accounts.
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for details.

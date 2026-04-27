@@ -1,62 +1,85 @@
-# 📡 AIUsageMonitor (AI 사용량 모니터)
+# AIUsageMonitor
 
-> **프리미엄 AI 사용량 모니터링 대시보드**  
-> Antigravity와 OpenAI Codex의 사용량 및 제한을 하나의 세련된 인터페이스에서 간편하게 추적하세요.
+> Antigravity와 Codex 사용량을 한곳에서 확인할 수 있는 프리미엄 AI 사용량 모니터링 앱
 
-## ✨ 개요
+![AIUsageMonitor Header](Resources/Images/app_title.png)
 
-AIUsageMonitor는 여러 계정과 모델을 관리하는 AI 파워 유저를 위한 .NET MAUI 기반 데스크톱 애플리케이션입니다. 사용량 백분율, 초기화 시간, 크레딧 잔액을 실시간으로 확인하여 중요한 작업 중 예기치 않게 제한에 걸리는 일을 방지합니다.
+## 개요
 
-## 🖼️ 미리보기
+AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 윈도우를 한 화면에서 확인할 수 있는 .NET MAUI 기반 데스크톱 앱입니다. 현재는 Windows 데스크톱 사용에 맞춰 정리되어 있습니다.
+
+## 미리보기
 
 | Antigravity (Google) | Codex (OpenAI/GitHub) |
 | :---: | :---: |
 | ![Antigravity Preview](Preview/Preview-Antigravity.png) | ![Codex Preview](Preview/Preview-Codex.png) |
 
-## 🚀 주요 기능
+## 다운로드
 
-### 🏢 멀티 서비스 지원
-- **Antigravity (Google)**: Gemini 3 Flash, 3.1 Pro (High/Low), Claude Opus/Sonnet 4.6, GPT-OSS 120B 모델 추적.
-- **Codex (OpenAI/GitHub)**: 지능형 윈도우 정규화를 통해 세션별 제한 및 주간 쿼터 모니터링.
+최신 빌드는 Releases 페이지에서 받을 수 있습니다.
 
-### 🎨 프리미엄 사용자 경험
-- **모던 다크 UI**: 에메랄드와 스카이 블루 액센트가 가미된 세련된 다크 테마.
-- **익명 모드 (Anonymous Mode)**: 개인정보(이름, 이메일)를 즉시 마스킹하여 프라이버시 보호 및 화면 공유 가능.
-- **탭 인터페이스**: Google 모델, Codex 계정, 설정을 간편하게 전환.
+## 주요 기능
 
-### ⚙️ 완전한 커스터마이징
-- **모델 필터**: 본인만의 추적 키워드와 표시 이름을 직접 정의.
-- **유연한 정렬**: 모델 카드의 순서를 변경하여 중요한 모델을 우선적으로 배치.
-- **자동 새로고침 및 재시도**: 설정 가능한 재시도 로직과 수동 새로고침 기능으로 데이터 신뢰성 확보.
+### 멀티 서비스 지원
+- Antigravity 계정과 모델 사용량 추적
+- Codex 세션 제한과 주간 쿼터 모니터링
+- 여러 계정을 한 대시보드에서 통합 관리
 
-## 🛠️ 설정 및 설치
+### Windows 트레이 워크플로우
+- 트레이 아이콘 지원
+- 좌클릭 및 더블클릭으로 앱 복원
+- 창 닫기 시 트레이로 보내기 / 종료 선택
+- 닫기 팝업에서만 백그라운드 안내 알림 표시
+- 선택 기억 기능으로 이후 동작 단순화
 
-### 요구 사항
-- .NET 8.0 또는 10.0 SDK
+### 새로고침과 모니터링
+- 헤더에서 전체 새로고침 실행
+- 현재 탭 기준 `F5` 전체 새로고침 지원
+- 제한된 동시성 기반 백그라운드 refresh queue
+- 네트워크 오류를 고려한 재시도 흐름
+
+### 프라이버시와 사용성
+- 화면 공유용 Anonymous 모드
+- 모델 필터 커스터마이징
+- Google / Codex / Settings / About 탭 구성
+
+## 요구 사항
+
+- .NET 10.0 SDK
+- .NET MAUI workload가 포함된 Visual Studio 2022
 - Windows 10/11
 
-### 소스에서 빌드
-1. 저장소를 클론(Clone)합니다.
+## 소스에서 실행
+
+1. 저장소를 클론합니다.
 2. Visual Studio 2022에서 `AIUsageMonitor.sln`을 엽니다.
 3. NuGet 패키지를 복원합니다.
-4. 빌드 및 실행 (대상: Windows Machine).
+4. `Windows Machine` 대상으로 실행합니다.
 
-## 🔑 인증 가이드
+## 인증
 
 ### Antigravity (Google)
-1. IDE에 Antigravity 확장이 설치되어 있고 로그인이 되어 있는지 확인하세요.
-2. Antigravity 탭에서 **(+)** 버튼을 클릭합니다.
+1. Antigravity 탭으로 이동합니다.
+2. `+ Add Account` 버튼을 누릅니다.
 3. 브라우저에서 Google OAuth 인증을 완료합니다.
 
 ### Codex (OpenAI / GitHub)
-1. **Codex** 탭으로 전환하고 **(+)** 버튼을 클릭합니다.
-2. **OpenAI Login**: PKCE OAuth 흐름을 통해 OpenAI 계정에 직접 접근합니다.
-3. **GitHub Login**: GitHub Copilot을 사용하는 경우 Device Flow를 통해 인증합니다.
+1. Codex 탭으로 이동합니다.
+2. `+ Add Account` 버튼을 누릅니다.
+3. OpenAI 로그인, GitHub 로그인, 수동 토큰 입력 중 하나를 선택합니다.
 
-## 🛡️ 개인정보 및 보안
-- **로컬 저장**: 모든 계정 토큰과 설정은 사용자의 로컬 컴퓨터에만 저장됩니다.
-- **직접 통신**: 앱은 중개 서버 없이 Google 및 OpenAI API와 직접 통신합니다.
-- **오픈 소스**: 코드를 직접 검토하여 토큰이 안전하게 처리되는지 확인할 수 있습니다.
+## 참고
 
-## 📄 라이선스
-MIT 라이선스에 따라 배포됩니다. 자세한 내용은 `LICENSE`를 참조하세요.
+- 버전: `v1.0.3`
+- Windows tray 동작은 platform controller 계층에서 관리합니다.
+- 트레이 아이콘은 Windows 호환성을 위해 `trayicon.ico`로 배포됩니다.
+
+## 개인정보 및 보안
+
+- 토큰과 설정은 로컬에 저장됩니다.
+- 앱은 각 제공자 엔드포인트와 직접 통신합니다.
+- 민감한 계정에 사용하기 전 소스를 검토하는 것을 권장합니다.
+
+## 라이선스
+
+MIT License를 따릅니다. 자세한 내용은 `LICENSE`를 확인해주세요.

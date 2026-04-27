@@ -13,6 +13,9 @@ public class CloudAccount : INotifyPropertyChanged
     private ObservableCollection<string> _hiddenModels = new();
     private bool _isSettingsOpen;
     private bool _isAnonymous;
+    private bool _isRefreshing;
+    private bool _isRefreshQueued;
+    private bool _hasError;
 
     public string id { get; set; } = Guid.NewGuid().ToString();
     public string name { get; set; } = "";
@@ -41,6 +44,27 @@ public class CloudAccount : INotifyPropertyChanged
     {
         get => _isSettingsOpen;
         set { _isSettingsOpen = value; OnPropertyChanged(); }
+    }
+
+    [JsonIgnore]
+    public bool IsRefreshing
+    {
+        get => _isRefreshing;
+        set { _isRefreshing = value; OnPropertyChanged(); }
+    }
+
+    [JsonIgnore]
+    public bool IsRefreshQueued
+    {
+        get => _isRefreshQueued;
+        set { _isRefreshQueued = value; OnPropertyChanged(); }
+    }
+
+    [JsonIgnore]
+    public bool HasError
+    {
+        get => _hasError;
+        set { _hasError = value; OnPropertyChanged(); }
     }
 
     // For Simple Binding to avoid MultiBinding errors

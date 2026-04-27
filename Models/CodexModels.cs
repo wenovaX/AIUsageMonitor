@@ -14,6 +14,9 @@ public class CodexAccount : INotifyPropertyChanged
 	private bool _isAnonymous;
 	private bool _hasCredits;
 	private bool _unlimitedCredits;
+	private bool _isRefreshing;
+	private bool _isRefreshQueued;
+	private bool _hasError;
 
 	// Primary window (the main usage gauge — often labeled "주간 사용 한도" on the site)
 	private int _primaryUsedPercent;
@@ -131,6 +134,27 @@ public class CodexAccount : INotifyPropertyChanged
 	}
 
 	[JsonIgnore]
+	public bool IsRefreshing
+	{
+		get => _isRefreshing;
+		set { _isRefreshing = value; OnPropertyChanged(); }
+	}
+
+	[JsonIgnore]
+	public bool IsRefreshQueued
+	{
+		get => _isRefreshQueued;
+		set { _isRefreshQueued = value; OnPropertyChanged(); }
+	}
+
+	[JsonIgnore]
+	public bool HasError
+	{
+		get => _hasError;
+		set { _hasError = value; OnPropertyChanged(); }
+	}
+
+	[JsonIgnore]
 	public int DisplayIndex { get; set; }
 
 	[JsonIgnore]
@@ -143,6 +167,9 @@ public class CodexAccount : INotifyPropertyChanged
 
 	[JsonIgnore]
 	public int PrimaryRemainingPercent => Math.Max(0, 100 - primaryUsedPercent);
+
+	[JsonIgnore]
+	public bool IsRateLimited => PrimaryRemainingPercent <= 1;
 
 	[JsonIgnore]
 	public string PlanDisplay => string.IsNullOrEmpty(plan_type) ? "—" : 
