@@ -38,6 +38,30 @@ public class GoogleRadarService
         var credits = await _googleApi.FetchCreditsAsync(account.access_token);
         var quota = await _googleApi.FetchQuotaAsync(account.access_token);
 
+        if (quota == null || quota.models.Count == 0)
+        {
+            throw new Exception("Failed to fetch quota or received empty data.");
+        }
+
+        // Global validation check: Ensure the response isn't completely zeroed out unexpectedly (Stale Cache Bug)
+        // System models (chat_, tab_) often bypass quotas, so we must check if the actual AI models are valid.
+        var aiModels = quota.models.Values.Where(m => !m.display_name.StartsWith("chat_", StringComparison.OrdinalIgnoreCase) && 
+                                                      !m.display_name.StartsWith("tab_", StringComparison.OrdinalIgnoreCase)).ToList();
+        
+        bool hasAnyValidAiData = aiModels.Any(m => m.percentage > 0 || (!string.IsNullOrWhiteSpace(m.resetTime) && m.resetTime != "0h 0m"));
+        
+        // If there are AI models, but ALL of them are 0% and have stale "0h 0m" reset times, it's a backend glitch.
+        if (aiModels.Count > 0 && !hasAnyValidAiData && account.quotas.Count > 0)
+        {
+            var dumpErr = string.Join(", ", quota.models.Values.Select(m => $"{m.display_name}:{m.percentage}%|{m.resetTime}"));
+            Debug.WriteLine($"[Antigravity][InvalidData] {account.email} -> {dumpErr}");
+            
+            // --- RAW JSON DUMP FOR DEBUGGING GOOGLE API ---
+            Debug.WriteLine($"[Antigravity][RawJsonDump] {account.email} -> {quota.RawJsonDump}");
+            
+            throw new Exception("Received suspiciously invalid or zeroed quota data (ignored).");
+        }
+
         var discoveredModels = quota.models.Values
             .Select(model => model.display_name)
             .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -52,11 +76,16 @@ public class GoogleRadarService
             Debug.WriteLine($"[Antigravity][FirstSuccess] {account.email}: {modelNames}");
         }
 
-        account.credits = credits;
-        account.quotas = new ObservableCollection<ModelQuotaInfo>(quota.models.Values);
-        account.last_updated = DateTime.Now;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            account.credits = credits;
+            account.UpdateQuotas(quota.models.Values);
+            account.last_updated = DateTime.Now;
+        });
 
         stopwatch.Stop();
+        var dumpSuccess = string.Join(", ", quota.models.Values.Select(m => $"{m.display_name}({m.percentage}%|{m.resetTime})"));
         Debug.WriteLine($"[Antigravity][RefreshCompleted] {account.email}: models={quota.models.Count}, elapsedMs={stopwatch.ElapsedMilliseconds}");
+        Debug.WriteLine($"[QuotaDump] {account.email} -> {dumpSuccess}");
     }
 }

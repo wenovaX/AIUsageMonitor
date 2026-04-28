@@ -59,31 +59,35 @@ AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 시점을
 ## 요구 사항
 
 - .NET 10.0 SDK
-- .NET MAUI workload가 포함된 Visual Studio 2022
+- .NET MAUI workload가 포함된 Visual Studio
 - Windows 10/11
 
 ## 소스에서 실행
 
 1. 저장소를 클론합니다.
-2. Visual Studio 2022에서 `AIUsageMonitor.sln`을 엽니다.
+2. Visual Studio 에서 `AIUsageMonitor.sln`을 엽니다.
 3. NuGet 패키지를 복원합니다.
 4. `Windows Machine` 대상으로 실행합니다.
 
 ## 인증
 
 ### Antigravity (Google)
-1. Antigravity 탭으로 이동합니다.
-2. `+ Add Account`를 누릅니다.
-3. 브라우저에서 Google OAuth 인증을 완료합니다.
+1. Open the Antigravity tab.
+2. Click **+ Add Account**.
+3. The Google OAuth flow opens in an in‑app browser.
+4. After authorisation, the app securely stores the access and refresh tokens in `SecureStorage` (encrypted by the OS).
+5. A background scheduler automatically refreshes the tokens 5 minutes before expiry, using a limited‑concurrency queue to avoid rate‑limit issues.
 
 ### Codex (OpenAI / GitHub)
-1. Codex 탭으로 이동합니다.
-2. `+ Add Account`를 누릅니다.
-3. OpenAI 로그인, GitHub 로그인, 수동 토큰 입력 중 하나를 선택합니다.
+1. Open the Codex tab.
+2. Click **+ Add Account**.
+3. Choose OpenAI login, GitHub (Copilot) login, or manual token entry.
+4. For OpenAI, a WebView loads the ChatGPT login page; the app extracts the `accessToken` via injected JavaScript.
+5. Extracted tokens are saved securely; a background refresh scheduler renews them before expiration (if a refresh token is available). For GitHub, a device‑code flow is used with similar secure storage.
 
 ## 참고
 
-- 버전: `v1.0.4`
+- 버전: `v1.0.5`
 - Windows tray 동작은 platform controller 계층에서 관리합니다.
 - tray 아이콘은 Windows 호환성을 위해 `trayicon.ico`로 배포합니다.
 

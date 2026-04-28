@@ -19,6 +19,15 @@ public class CodexApiService
 
 		[JsonPropertyName("credits")]
 		public CreditDetails? Credits { get; set; }
+
+		[JsonPropertyName("promo")]
+		public PromoDetails? Promo { get; set; }
+	}
+
+	public class PromoDetails
+	{
+		[JsonPropertyName("message")]
+		public string Message { get; set; } = "";
 	}
 
 	public class RateLimitDetails
@@ -99,6 +108,7 @@ public class CodexApiService
 		if (!response.IsSuccessStatusCode)
 			throw new Exception($"Usage API error ({response.StatusCode}): {json}");
 
+        System.Diagnostics.Debug.WriteLine($"[CodexAPI RAW JSON] {json}");
 		return JsonSerializer.Deserialize<CodexUsageResponse>(json);
 	}
 
@@ -189,38 +199,4 @@ public class CodexApiService
 		}
 	}
 
-	// Fetch GitHub user profile
-	public async Task<UserInfoResponse?> FetchGitHubUserInfoAsync(string accessToken)
-	{
-		var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user");
-		request.Headers.Add("Authorization", $"Bearer {accessToken}");
-		request.Headers.Add("User-Agent", "AIUsageMonitor");
-		request.Headers.Add("Accept", "application/vnd.github+json");
-
-		var response = await _httpClient.SendAsync(request);
-		var json = await response.Content.ReadAsStringAsync();
-
-		System.Diagnostics.Debug.WriteLine($"[CodexAPI] GitHub UserInfo status: {response.StatusCode}");
-
-		if (!response.IsSuccessStatusCode) return null;
-
-		using var doc = JsonDocument.Parse(json);
-		var root = doc.RootElement;
-
-		var result = new UserInfoResponse();
-
-		if (root.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == JsonValueKind.String)
-			result.Name = nameEl.GetString() ?? "";
-		// Fallback to login if name is empty
-		if (string.IsNullOrEmpty(result.Name) && root.TryGetProperty("login", out var loginEl))
-			result.Name = loginEl.GetString() ?? "";
-
-		if (root.TryGetProperty("email", out var emailEl) && emailEl.ValueKind == JsonValueKind.String)
-			result.Email = emailEl.GetString() ?? "";
-
-		if (root.TryGetProperty("avatar_url", out var avatarEl))
-			result.Picture = avatarEl.GetString() ?? "";
-
-		return result;
-	}
 }

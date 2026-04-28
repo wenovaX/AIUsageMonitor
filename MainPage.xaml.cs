@@ -7,12 +7,15 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Windows.Input;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 #if WINDOWS
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using VirtualKey = Windows.System.VirtualKey;
 #endif
-
 namespace AIUsageMonitor;
 
 public partial class MainPage : ContentPage
@@ -27,10 +30,10 @@ public partial class MainPage : ContentPage
     private readonly GoogleRadarService _googleRadar;
     private readonly AccountManagerService _accountManager = new();
     private readonly CodexAccountManagerService _codexAccountManager = new();
-    private readonly CodexOAuthService _codexOAuth = new();
     private readonly OpenAIAuthService _openAIAuth = new();
     private readonly CodexApiService _codexApi = new();
     private readonly PlatformManager _platformManager;
+    private readonly TokenStorageService _tokenStorage;
     private const double GoogleCardWidth = 240;
     private const double GoogleCardSpacing = 5;
     private const double GoogleLayoutHorizontalPadding = 80;
@@ -43,6 +46,11 @@ public partial class MainPage : ContentPage
         _modelCatalogService.Models.Where(model => !model.IsGemini).ToList();
 
     public ObservableCollection<GoogleAccountRow> GoogleAccountRows { get; } = new();
+    public ObservableCollection<CodexAccountRow> CodexAccountRows { get; } = new();
+
+    private const double CodexCardWidth = 240;
+    private const double CodexCardSpacing = 5;
+    private const double CodexLayoutHorizontalPadding = 50; // Fine-tuned wrapping offset
 
     // Tab Navigation Logic
     private string _currentTab = "Google";
@@ -142,6 +150,7 @@ public partial class MainPage : ContentPage
     private readonly Dictionary<int, CancellationTokenSource> _googleRowRefreshCts = new();
     private bool _isBulkUpdatingGoogleLayout;
     private bool _hasPendingModelCatalogUiRefresh;
+    private int _lastCodexCardsPerRow;
 
     private bool _isLoginWaiting;
     public bool IsLoginWaiting
@@ -150,10 +159,19 @@ public partial class MainPage : ContentPage
         set { _isLoginWaiting = value; OnPropertyChanged(); }
     }
 
-    public const string AppVersion = "1.0.4";
+    private bool _isCodexLoginOverlayVisible;
+    public bool IsCodexLoginOverlayVisible
+    {
+        get => _isCodexLoginOverlayVisible;
+        set { _isCodexLoginOverlayVisible = value; OnPropertyChanged(); }
+    }
+
+    public const string AppVersion = "1.0.5";
     public string DisplayVersion => $"v{AppVersion}";
 
     private CancellationTokenSource? _loginCts;
+    private bool _isProcessingCodexLogin;
+    private readonly object _refreshSchedulersLock = new();
 
     // Shared Settings Panel Logic
     private CloudAccount? _selectedAccount;
@@ -188,6 +206,7 @@ public partial class MainPage : ContentPage
     {
         _platformManager = MauiProgram.Services.GetRequiredService<PlatformManager>();
         _modelCatalogService = MauiProgram.Services.GetRequiredService<ModelCatalogService>();
+        _tokenStorage = MauiProgram.Services.GetRequiredService<TokenStorageService>();
         (_maxGlobalRefreshConcurrency, _maxGoogleRefreshConcurrency, _maxCodexRefreshConcurrency) = CalculateRefreshConcurrency();
         _globalRefreshSemaphore = new SemaphoreSlim(_maxGlobalRefreshConcurrency, _maxGlobalRefreshConcurrency);
         _googleRefreshSemaphore = new SemaphoreSlim(_maxGoogleRefreshConcurrency, _maxGoogleRefreshConcurrency);
@@ -204,8 +223,8 @@ public partial class MainPage : ContentPage
         ShowAppCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
         ExitAppCommand = new Command(() => OnExitAppFromTray(null, EventArgs.Empty));
         DoubleClickTrayIconCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
-
         Accounts.CollectionChanged += OnAccountsCollectionChanged;
+        CodexAccounts.CollectionChanged += OnCodexAccountsCollectionChanged;
         _modelCatalogService.CatalogChanged += OnModelCatalogChanged;
         UpdateDisplayIndices();
         foreach (var account in Accounts)
@@ -213,8 +232,29 @@ public partial class MainPage : ContentPage
             account.PropertyChanged += OnGoogleAccountPropertyChanged;
         }
         RebuildGoogleAccountRows();
+        RebuildCodexAccountRows();
+
+        InitializeAsync();
+    }
+
+    private async void InitializeAsync()
+    {
+        await _accountManager.LoadAccountsAsync();
+        await _codexAccountManager.LoadAccountsAsync();
+
+        UpdateDisplayIndices();
+        UpdateCodexDisplayIndices();
+
+        foreach (var account in Accounts)
+        {
+            account.PropertyChanged -= OnGoogleAccountPropertyChanged;
+            account.PropertyChanged += OnGoogleAccountPropertyChanged;
+        }
+        RebuildGoogleAccountRows();
+        RebuildCodexAccountRows();
 
         _ = RefreshAllAccounts(RefreshQueueLevel.Background);
+        _ = RefreshAllCodexAccounts(RefreshQueueLevel.Background);
     }
 
     public ICommand ShowAppCommand { get; }
@@ -293,6 +333,7 @@ public partial class MainPage : ContentPage
             return;
 
         ScheduleGoogleAccountRowRefresh();
+        RebuildCodexAccountRows();
     }
 
     private void OnAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -485,6 +526,45 @@ public partial class MainPage : ContentPage
     private void OnPlatformWindowResizeCompleted(object? sender, EventArgs e)
     {
         RebuildGoogleAccountRows();
+        RebuildCodexAccountRows();
+    }
+
+    private void OnCodexAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        RebuildCodexAccountRows();
+    }
+
+    private void RebuildCodexAccountRows()
+    {
+        CodexAccountRows.Clear();
+        _lastCodexCardsPerRow = CalculateCodexCardsPerRow();
+
+        if (CodexAccounts.Count == 0)
+            return;
+
+        var cardsPerRow = _lastCodexCardsPerRow;
+
+        for (int i = 0; i < CodexAccounts.Count; i += cardsPerRow)
+        {
+            var rowAccounts = CodexAccounts.Skip(i).Take(cardsPerRow).ToList();
+            var row = new CodexAccountRow();
+
+            foreach (var account in rowAccounts)
+            {
+                row.Accounts.Add(account);
+            }
+
+            CodexAccountRows.Add(row);
+        }
+    }
+
+    private int CalculateCodexCardsPerRow()
+    {
+        var availableWidth = Width <= 0
+            ? CodexCardWidth
+            : Math.Max(CodexCardWidth, Width - CodexLayoutHorizontalPadding);
+
+        return Math.Max(1, (int)Math.Floor((availableWidth + CodexCardSpacing) / (CodexCardWidth + CodexCardSpacing)));
     }
 
     private void OnModelCatalogChanged(object? sender, EventArgs e)
@@ -729,32 +809,143 @@ public partial class MainPage : ContentPage
     private async Task PromptAddCodexAccount()
     {
         var action = await DisplayActionSheetAsync("Add Codex Account", "Cancel", null,
-            "Login with OpenAI",
-            "Login with GitHub (Copilot)",
-            "Enter Token Manually");
+            "Login with OpenAI (OAuth)",
+            "Login with OpenAI (Web Session)");
 
-        if (action == "Enter Token Manually")
-        {
-            string token = await DisplayPromptAsync("Add Codex Account", "Enter your Codex Token (JWT or OAuth):", "Add", "Cancel");
-            if (!string.IsNullOrWhiteSpace(token))
-            {
-                var codexAccount = new CodexAccount
-                {
-                    name = "Manual Token Account",
-                    access_token = token.Trim(),
-                    login_method = "manual"
-                };
-                _codexAccountManager.AddOrUpdateAccount(codexAccount);
-            }
-        }
-        else if (action == "Login with OpenAI")
+        if (action == "Login with OpenAI (OAuth)")
         {
             await LoginViaOpenAIFlow();
         }
-        else if (action == "Login with GitHub (Copilot)")
+        else if (action == "Login with OpenAI (Web Session)")
         {
-            await LoginViaGitHubFlow();
+            StartCodexWebViewLogin();
         }
+    }
+
+    private async void StartCodexWebViewLogin(bool clearSession = false)
+    {
+        IsCodexLoginOverlayVisible = true;
+        _isProcessingCodexLogin = false;
+
+#if WINDOWS
+        if (clearSession)
+        {
+            try
+            {
+                if (CodexLoginWebView.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.WebView2 webView2)
+                {
+                    await webView2.EnsureCoreWebView2Async();
+                    webView2.CoreWebView2.CookieManager.DeleteAllCookies();
+                    // Force a clean session when token refresh or auth recovery fails.
+                    await webView2.CoreWebView2.Profile.ClearBrowsingDataAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WebView2] Failed to clear cookies/cache: {ex.Message}");
+            }
+        }
+#endif
+
+        CodexLoginWebView.Source = "https://chatgpt.com/auth/login";
+    }
+
+    private void OnCancelCodexLoginClicked(object? sender, EventArgs e)
+    {
+        Debug.WriteLine("[CodexWebView] User clicked Cancel button.");
+        _isProcessingCodexLogin = false;
+        IsCodexLoginOverlayVisible = false;
+        CodexLoginWebView.Source = "about:blank";
+    }
+
+    private async void OnCodexLoginWebViewNavigated(object? sender, WebNavigatedEventArgs e)
+    {
+        if (!IsCodexLoginOverlayVisible || _isProcessingCodexLogin)
+            return;
+
+        Debug.WriteLine($"[CodexWebView] Navigated to URL: {e.Url}");
+
+        if (e.Url.StartsWith("https://chatgpt.com", StringComparison.OrdinalIgnoreCase))
+        {
+            _isProcessingCodexLogin = true;
+            try
+            {
+                Debug.WriteLine("[CodexWebView] chatgpt.com detected, waiting 1500ms for auth state to settle...");
+                // Give the page a moment to load
+                await Task.Delay(1500);
+
+                if (sender is Microsoft.Maui.Controls.WebView webView)
+                {
+                    Debug.WriteLine("[CodexWebView] Executing JS to fetch /api/auth/session...");
+                    string js = "(() => { try { var xhr = new XMLHttpRequest(); xhr.withCredentials = true; xhr.open('GET', 'https://chatgpt.com/api/auth/session', false); xhr.send(); return xhr.responseText; } catch(e) { return 'ERROR:' + e.message; } })()";
+                    string result = await webView.EvaluateJavaScriptAsync(js);
+                    
+                    Debug.WriteLine($"[CodexWebView] JS Execution Result Length: {result?.Length ?? 0}");
+                    if (!string.IsNullOrEmpty(result) && result.Length < 200)
+                    {
+                        Debug.WriteLine($"[CodexWebView] JS Result snippet: {result}");
+                    }
+
+                    if (!string.IsNullOrEmpty(result) && result != "null" && result.Length > 10 && !result.StartsWith("ERROR:"))
+                    {
+                        var unescaped = System.Text.RegularExpressions.Regex.Unescape(result.Trim('"'));
+                        var jsonDoc = JsonDocument.Parse(unescaped);
+                        if (jsonDoc.RootElement.TryGetProperty("accessToken", out var tokenEl))
+                        {
+                            var token = tokenEl.GetString();
+                            if (!string.IsNullOrEmpty(token))
+                            {
+                                Debug.WriteLine("[CodexWebView] SUCCESS! Access token captured.");
+                                IsCodexLoginOverlayVisible = false;
+                                webView.Source = "about:blank"; // Reset
+                                
+                                string? userName = null;
+                                string? userEmail = null;
+                                
+                                if (jsonDoc.RootElement.TryGetProperty("user", out var userEl))
+                                {
+                                    if (userEl.TryGetProperty("name", out var nameEl)) userName = nameEl.GetString();
+                                    if (userEl.TryGetProperty("email", out var emailEl)) userEmail = emailEl.GetString();
+                                }
+                                
+                                await ProcessCodexTokenAsync(token, userName, userEmail);
+                            }
+                            else
+                            {
+                                Debug.WriteLine("[CodexWebView] accessToken property found, but value is empty.");
+                            }
+                        }
+                        else
+                        {
+                            Debug.WriteLine("[CodexWebView] accessToken property not found in JSON.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[CodexWebView] Token Extraction Error: {ex.Message}");
+            }
+            finally
+            {
+                if (IsCodexLoginOverlayVisible)
+                {
+                    _isProcessingCodexLogin = false;
+                }
+            }
+        }
+    }
+
+    private static string GetCodexTokenStorageKey(CodexAccount account) =>
+        string.IsNullOrWhiteSpace(account.account_id) ? account.id : account.account_id;
+
+    private Task PromptCodexReLoginAsync(string title, string message)
+    {
+        return MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            await DisplayAlertAsync(title, message, "OK");
+            StartCodexWebViewLogin(clearSession: true);
+        });
     }
 
     private async Task LoginViaOpenAIFlow()
@@ -767,11 +958,10 @@ public partial class MainPage : ContentPage
             IsLoginWaiting = true;
             var authUrl = _openAIAuth.GetAuthUrl();
             var code = await _openAIAuth.ReceiveCodeAsync(authUrl, _loginCts.Token);
-
-            if (string.IsNullOrEmpty(code)) return;
+            if (string.IsNullOrEmpty(code))
+                return;
 
             var tokens = await _openAIAuth.ExchangeCodeForTokensAsync(code);
-
             var codexAccount = new CodexAccount
             {
                 name = "OpenAI Account",
@@ -780,34 +970,42 @@ public partial class MainPage : ContentPage
                 login_method = "openai"
             };
 
-            // Extract user info from JWT id_token (most reliable)
             try
             {
                 var jwtInfo = CodexApiService.ParseIdToken(tokens.id_token);
                 if (jwtInfo != null)
                 {
-                    if (!string.IsNullOrEmpty(jwtInfo.Name)) codexAccount.name = jwtInfo.Name;
-                    if (!string.IsNullOrEmpty(jwtInfo.Email)) codexAccount.email = jwtInfo.Email;
+                    if (!string.IsNullOrWhiteSpace(jwtInfo.Name))
+                        codexAccount.name = jwtInfo.Name;
+                    if (!string.IsNullOrWhiteSpace(jwtInfo.Email))
+                        codexAccount.email = jwtInfo.Email;
                 }
             }
-            catch { /* Non-critical */ }
+            catch
+            {
+            }
 
-            // Fallback: try /me API if JWT didn't give us a name
-            if (codexAccount.name == "OpenAI Account")
+            if (codexAccount.name == "OpenAI Account" || string.IsNullOrWhiteSpace(codexAccount.email))
             {
                 try
                 {
                     var userInfo = await _codexApi.FetchUserInfoAsync(tokens.access_token);
                     if (userInfo != null)
                     {
-                        if (!string.IsNullOrEmpty(userInfo.Name)) codexAccount.name = userInfo.Name;
-                        if (!string.IsNullOrEmpty(userInfo.Email)) codexAccount.email = userInfo.Email;
+                        if (!string.IsNullOrWhiteSpace(userInfo.Name))
+                            codexAccount.name = userInfo.Name;
+                        if (!string.IsNullOrWhiteSpace(userInfo.Email))
+                            codexAccount.email = userInfo.Email;
                     }
                 }
-                catch { /* Non-critical */ }
+                catch
+                {
+                }
             }
 
-            // Try to fetch initial usage
+            var accountKey = GetCodexTokenStorageKey(codexAccount);
+            await _tokenStorage.SaveTokensAsync(accountKey, tokens.access_token, tokens.refresh_token, tokens.expires_in);
+            await ScheduleTokenRefreshAsync(codexAccount);
             await UpdateCodexAccountData(codexAccount);
 
             _codexAccountManager.AddOrUpdateAccount(codexAccount);
@@ -829,70 +1027,160 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private async Task LoginViaGitHubFlow()
+    // Refresh token if needed (called from scheduler or after 401)
+    private async Task RefreshTokenIfNeededAsync(CodexAccount account)
     {
-        _loginCts?.Cancel();
-        _loginCts = new CancellationTokenSource();
-
-        try
+        var accountKey = GetCodexTokenStorageKey(account);
+        var (_, refresh, expiresAt) = await _tokenStorage.LoadTokensAsync(accountKey);
+        if (string.IsNullOrEmpty(refresh))
         {
-            IsLoginWaiting = true;
-            var deviceCodeResponse = await _codexOAuth.RequestDeviceCodeAsync();
-            if (deviceCodeResponse == null) throw new Exception("Failed to get device code.");
+            // No refresh token – ask user to re‑login
+            await PromptCodexReLoginAsync("Session Expired", "Automatic refresh is unavailable for this login. Please sign in again.");
+            return;
+        }
 
-            // Copy to clipboard
-            await Clipboard.Default.SetTextAsync(deviceCodeResponse.UserCode);
-
-            // Notify user
-            await DisplayAlertAsync("GitHub Login", 
-                $"Your login code is: {deviceCodeResponse.UserCode}\n\nIt has been copied to your clipboard. The browser will now open. Please paste the code to authorize.", 
-                "Open Browser");
-
-            // Open browser
-            await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync(deviceCodeResponse.VerificationUri);
-
-            // Start polling
-            using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(_loginCts.Token);
-            pollCts.CancelAfter(TimeSpan.FromMinutes(10));
-            var token = await _codexOAuth.PollForTokenAsync(deviceCodeResponse.DeviceCode, deviceCodeResponse.Interval, pollCts.Token);
-
-            if (!string.IsNullOrEmpty(token))
+        var now = DateTime.UtcNow;
+        // Refresh if expiration is missing, already passed, or within 5 min window
+        if (!expiresAt.HasValue || expiresAt.Value <= now.AddMinutes(5))
+        {
+            try
             {
-                var codexAccount = new CodexAccount
-                {
-                    name = "GitHub Copilot",
-                    access_token = token,
-                    login_method = "github"
-                };
-
-                // Fetch GitHub profile
-                try
-                {
-                    var ghUser = await _codexApi.FetchGitHubUserInfoAsync(token);
-                    if (ghUser != null)
-                    {
-                        if (!string.IsNullOrEmpty(ghUser.Name)) codexAccount.name = ghUser.Name;
-                        if (!string.IsNullOrEmpty(ghUser.Email)) codexAccount.email = ghUser.Email;
-                    }
-                }
-                catch { /* Non-critical */ }
-
-                _codexAccountManager.AddOrUpdateAccount(codexAccount);
-                UpdateCodexDisplayIndices();
-                await DisplayAlertAsync("Success", "GitHub Copilot account successfully authorized and added.", "OK");
+                var refreshed = await _openAIAuth.RefreshTokenAsync(refresh);
+                // Save new tokens + new expiration
+                await _tokenStorage.SaveTokensAsync(accountKey,
+                    refreshed.access_token,
+                    refreshed.refresh_token,
+                    refreshed.expires_in);
+                account.access_token = refreshed.access_token;
+                account.refresh_token = refreshed.refresh_token;
+                // Reschedule next refresh based on new expiration
+                await ScheduleTokenRefreshAsync(account);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[TokenRefresh] Failed for {accountKey}: {ex.Message}");
+                await PromptCodexReLoginAsync("Authentication Expired", "Refresh failed. A fresh web session login will open now.");
             }
         }
-        catch (OperationCanceledException)
+    }
+
+    // Schedule a token‑refresh task for the given account (5 min before expiry)
+    private async Task ScheduleTokenRefreshAsync(CodexAccount account)
+    {
+        var accountKey = GetCodexTokenStorageKey(account);
+        var (_, _, expiresAt) = await _tokenStorage.LoadTokensAsync(accountKey);
+        if (!expiresAt.HasValue) return; // nothing to schedule
+
+        var now = DateTime.UtcNow;
+        var runAt = expiresAt.Value.AddMinutes(-5);
+        var delay = runAt > now ? runAt - now : TimeSpan.Zero;
+
+        // Cancel previous schedule if any
+        CancellationTokenSource? oldCts = null;
+        lock (_refreshSchedulersLock)
         {
-            await DisplayAlertAsync("Cancelled", "Login timed out or was cancelled.", "OK");
+            if (_refreshSchedulers.TryGetValue(accountKey, out var existingCts))
+            {
+                oldCts = existingCts;
+            }
+
+            var cts = new CancellationTokenSource();
+            _refreshSchedulers[accountKey] = cts;
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delay, cts.Token);
+                    if (!cts.IsCancellationRequested)
+                        await RefreshTokenIfNeededAsync(account);
+                }
+                catch (TaskCanceledException)
+                {
+                }
+            });
+        }
+    }
+
+    private async Task ProcessCodexTokenAsync(string token, string? userName, string? userEmail)
+    {
+        try
+        {
+            var codexAccount = new CodexAccount
+            {
+                access_token = token,
+                refresh_token = string.Empty,
+                login_method = "openai",
+                name = string.IsNullOrWhiteSpace(userName) ? "OpenAI Account" : userName,
+                email = userEmail ?? string.Empty,
+                account_id = string.Empty
+            };
+
+            if (codexAccount.name == "OpenAI Account" || string.IsNullOrWhiteSpace(codexAccount.email))
+            {
+                try
+                {
+                    var apiUserInfo = await _codexApi.FetchUserInfoAsync(token);
+                    if (apiUserInfo != null)
+                    {
+                        if (!string.IsNullOrWhiteSpace(apiUserInfo.Name))
+                            codexAccount.name = apiUserInfo.Name;
+                        if (!string.IsNullOrWhiteSpace(apiUserInfo.Email))
+                            codexAccount.email = apiUserInfo.Email;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (codexAccount.name == "OpenAI Account" && !string.IsNullOrWhiteSpace(codexAccount.email))
+            {
+                var prefix = codexAccount.email.Split('@')[0];
+                if (prefix.Length > 0)
+                {
+                    codexAccount.name = char.ToUpper(prefix[0]) + prefix.Substring(1);
+                }
+            }
+
+            await _tokenStorage.SaveTokensAsync(codexAccount.id, token, null);
+
+            try
+            {
+                await UpdateCodexAccountData(codexAccount);
+            }
+            catch (Exception ex) when (ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.WriteLine("[CodexWebView] Access token likely expired, attempting refresh...");
+                var (_, savedRefresh, _) = await _tokenStorage.LoadTokensAsync(codexAccount.id);
+                if (!string.IsNullOrEmpty(savedRefresh))
+                {
+                    var refreshed = await _openAIAuth.RefreshTokenAsync(savedRefresh);
+                    codexAccount.access_token = refreshed.access_token;
+                    codexAccount.refresh_token = refreshed.refresh_token;
+                    await _tokenStorage.SaveTokensAsync(codexAccount.id, refreshed.access_token, refreshed.refresh_token, refreshed.expires_in);
+                    await UpdateCodexAccountData(codexAccount);
+                }
+                else
+                {
+                    Debug.WriteLine("[CodexWebView] No refresh token available, prompting re-login.");
+                    await DisplayAlertAsync("Session Expired", "Please log in again.", "OK");
+                    StartCodexWebViewLogin(clearSession: true);
+                    return;
+                }
+            }
+
+            _codexAccountManager.AddOrUpdateAccount(codexAccount);
+            UpdateCodexDisplayIndices();
+            await DisplayAlertAsync("Success", "OpenAI account successfully added.", "OK");
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Login Failed", ex.Message, "OK");
-        }
-        finally
-        {
-            IsLoginWaiting = false;
+            _isProcessingCodexLogin = false;
+            Debug.WriteLine($"Codex Token Process Error: {ex.Message}");
+            await DisplayAlertAsync("Login Failed", $"Failed to process Codex token:\n{ex.Message}", "OK");
         }
     }
 
@@ -946,7 +1234,11 @@ public partial class MainPage : ContentPage
     }
 #endif
 
-    private async Task EnqueueRefreshAsync(object account, RefreshQueueLevel queueLevel = RefreshQueueLevel.Background)
+    // NEW: Token refresh semaphore (single token refresh at a time)
+    private readonly SemaphoreSlim _tokenRefreshSemaphore = new SemaphoreSlim(1, 1);
+    // Scheduler Cts per account to allow cancellation/rescheduling
+    private readonly Dictionary<string, CancellationTokenSource> _refreshSchedulers = new();
+    private async Task EnqueueRefreshAsync(object account, RefreshQueueLevel queueLevel)
     {
         if (account is CloudAccount g)
         {
@@ -979,25 +1271,65 @@ public partial class MainPage : ContentPage
 
             if (account is CloudAccount googleAcc)
             {
-                googleAcc.IsRefreshQueued = false;
-                googleAcc.IsRefreshing = true;
+                MainThread.BeginInvokeOnMainThread(() => {
+                    googleAcc.IsRefreshQueued = false;
+                    googleAcc.IsRefreshing = true;
+                });
                 try
                 {
+                    await Task.Delay(500); // FORCE DELAY TO SEE ANIMATION
                     await RetryAsync(async () => await _googleRadar.UpdateAccountDataAsync(googleAcc), 3, 15);
                 }
-                catch { googleAcc.HasError = true; }
-                finally { googleAcc.IsRefreshing = false; }
+                catch (Exception ex) { 
+                    MainThread.BeginInvokeOnMainThread(() => {
+                        googleAcc.HasError = true; 
+                        googleAcc.LastErrorMessage = ex.Message; 
+                    });
+                }
+                finally { 
+                    MainThread.BeginInvokeOnMainThread(() => googleAcc.IsRefreshing = false); 
+                }
             }
             else if (account is CodexAccount codexAcc)
             {
-                codexAcc.IsRefreshQueued = false;
-                codexAcc.IsRefreshing = true;
+                // Use dedicated token refresh semaphore for token-only refreshes.
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    codexAcc.IsRefreshQueued = false;
+                    codexAcc.IsRefreshing = true;
+                });
                 try
                 {
+                    await Task.Delay(500); // FORCE DELAY TO SEE ANIMATION
                     await RetryAsync(async () => await UpdateCodexAccountData(codexAcc), 3, 15);
                 }
-                catch { codexAcc.HasError = true; }
-                finally { codexAcc.IsRefreshing = false; }
+                catch (Exception ex)
+                {
+                    if (ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _tokenRefreshSemaphore.WaitAsync();
+                        try
+                        {
+                            await RefreshTokenIfNeededAsync(codexAcc);
+                        }
+                        finally
+                        {
+                            _tokenRefreshSemaphore.Release();
+                        }
+                    }
+                    else
+                    {
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            codexAcc.HasError = true;
+                            codexAcc.LastErrorMessage = ex.Message;
+                        });
+                    }
+                }
+                finally
+                {
+                    MainThread.BeginInvokeOnMainThread(() => codexAcc.IsRefreshing = false);
+                }
             }
         }
         finally
@@ -1025,7 +1357,7 @@ public partial class MainPage : ContentPage
             var tasks = Accounts.Select(acc => EnqueueRefreshAsync(acc, queueLevel)).ToList();
             await Task.WhenAll(tasks);
 
-            _accountManager.SaveAccounts();
+            _ = _accountManager.SaveAccountsAsync();
             UpdateDisplayIndices();
             RebuildGoogleAccountRows();
             NotifyStatsChanged();
@@ -1044,7 +1376,7 @@ public partial class MainPage : ContentPage
             var tasks = CodexAccounts.Select(acc => EnqueueRefreshAsync(acc, queueLevel)).ToList();
             await Task.WhenAll(tasks);
 
-            _codexAccountManager.SaveAccounts();
+            _ = _codexAccountManager.SaveAccountsAsync();
             UpdateCodexDisplayIndices();
         }
         catch (Exception ex)
@@ -1078,7 +1410,7 @@ public partial class MainPage : ContentPage
             {
                 Debug.WriteLine($"[Retry] Attempt {attempt}/{maxRetries} failed: {ex.Message}");
                 if (attempt == maxRetries) throw;
-                await Task.Delay(1000); // Brief pause before retry
+                await Task.Delay(1500); // 1.5-second pause before retry
             }
         }
     }
@@ -1094,62 +1426,81 @@ public partial class MainPage : ContentPage
 
             if (usage != null)
             {
-                if (!string.IsNullOrEmpty(usage.PlanType))
-                    account.plan_type = usage.PlanType;
-
-                // Normalize windows: API may swap primary/secondary depending on plan
-                // session = 300 min (5h), weekly = 10080 min (7d)
-                var rawPrimary = usage.RateLimit?.PrimaryWindow;
-                var rawSecondary = usage.RateLimit?.SecondaryWindow;
-                var (sessionWindow, weeklyWindow) = NormalizeWindows(rawPrimary, rawSecondary);
-
-                // Session window → main usage gauge (or weekly if no session)
-                if (sessionWindow != null)
+                // Global validation check: Ensure the response isn't completely empty
+                if (usage.RateLimit?.PrimaryWindow == null && usage.RateLimit?.SecondaryWindow == null && usage.Credits == null)
                 {
-                    account.primaryUsedPercent = sessionWindow.UsedPercent;
-                    account.primaryWindowLabel = CodexApiService.FormatWindowName(sessionWindow.LimitWindowSeconds);
-                    account.primaryResetDescription = CodexApiService.FormatResetTime(sessionWindow.ResetAt);
-                }
-                else if (weeklyWindow != null)
-                {
-                    // Free accounts: only weekly window exists → show as primary gauge
-                    account.primaryUsedPercent = weeklyWindow.UsedPercent;
-                    account.primaryWindowLabel = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
-                    account.primaryResetDescription = CodexApiService.FormatResetTime(weeklyWindow.ResetAt);
-                    weeklyWindow = null; // Already shown as primary
+                    throw new Exception("Received suspiciously invalid usage data (all elements are null).");
                 }
 
-                // Weekly window → reset date
-                if (weeklyWindow != null)
+                MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    account.secondaryUsedPercent = weeklyWindow.UsedPercent;
-                    account.secondaryResetDate = CodexApiService.FormatResetDate(weeklyWindow.ResetAt);
-                    account.secondaryResetDescription = CodexApiService.FormatResetTime(weeklyWindow.ResetAt);
+                    if (!string.IsNullOrEmpty(usage.PlanType))
+                        account.plan_type = usage.PlanType;
 
-                    var secondaryText = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
-                    account.secondaryWindowLabel = secondaryText;
-                }
-                else
-                {
-                    account.secondaryWindowLabel = string.Empty;
-                    account.secondaryResetDate = string.Empty;
-                    account.secondaryResetDescription = string.Empty;
-                }
+                    // Normalize windows: API may swap primary/secondary depending on plan
+                    // session = 300 min (5h), weekly = 10080 min (7d)
+                    var rawPrimary = usage.RateLimit?.PrimaryWindow;
+                    var rawSecondary = usage.RateLimit?.SecondaryWindow;
+                    var (sessionWindow, weeklyWindow) = NormalizeWindows(rawPrimary, rawSecondary);
 
-                if (usage.Credits != null)
-                {
-                    account.has_credits = usage.Credits.HasCredits;
-                    account.unlimited_credits = usage.Credits.Unlimited;
-                    var balance = usage.Credits.GetBalance();
-                    if (balance.HasValue) account.credits = balance.Value;
-                }
+                    // Session window → main usage gauge (or weekly if no session)
+                    if (sessionWindow != null)
+                    {
+                        account.primaryUsedPercent = sessionWindow.UsedPercent;
+                        account.primaryWindowLabel = CodexApiService.FormatWindowName(sessionWindow.LimitWindowSeconds);
+                        account.primaryResetDescription = CodexApiService.FormatResetTime(sessionWindow.ResetAt);
+                    }
+                    else if (weeklyWindow != null)
+                    {
+                        // Free accounts: only weekly window exists → show as primary gauge
+                        account.primaryUsedPercent = weeklyWindow.UsedPercent;
+                        account.primaryWindowLabel = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
+                        account.primaryResetDescription = CodexApiService.FormatResetTime(weeklyWindow.ResetAt);
+                        weeklyWindow = null; // Already shown as primary
+                    }
 
-                account.last_updated = DateTime.Now;
+                    // Weekly window → reset date
+                    if (weeklyWindow != null)
+                    {
+                        account.secondaryUsedPercent = weeklyWindow.UsedPercent;
+                        account.secondaryResetDate = CodexApiService.FormatResetDate(weeklyWindow.ResetAt);
+                        account.secondaryResetDescription = CodexApiService.FormatResetTime(weeklyWindow.ResetAt);
+
+                        var secondaryText = CodexApiService.FormatWindowName(weeklyWindow.LimitWindowSeconds);
+                        account.secondaryWindowLabel = secondaryText;
+                    }
+                    else
+                    {
+                        account.secondaryWindowLabel = string.Empty;
+                        account.secondaryResetDate = string.Empty;
+                        account.secondaryResetDescription = string.Empty;
+                    }
+
+                    if (usage.Credits != null)
+                    {
+                        account.has_credits = usage.Credits.HasCredits;
+                        account.unlimited_credits = usage.Credits.Unlimited;
+                        var balance = usage.Credits.GetBalance();
+                        if (balance.HasValue) account.credits = balance.Value;
+                    }
+
+                    if (usage.Promo != null && !string.IsNullOrWhiteSpace(usage.Promo.Message))
+                    {
+                        account.PromoMessage = usage.Promo.Message;
+                    }
+                    else
+                    {
+                        account.PromoMessage = string.Empty;
+                    }
+
+                    account.last_updated = DateTime.Now;
+                });
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Codex update error for {account.name}: {ex.Message}");
+            throw;
         }
     }
 
@@ -1194,8 +1545,42 @@ public partial class MainPage : ContentPage
         {
             IsBusy = true;
             await EnqueueRefreshAsync(account, RefreshQueueLevel.Immediate);
-            _codexAccountManager.SaveAccounts();
+            _ = _codexAccountManager.SaveAccountsAsync();
             IsBusy = false;
+        }
+    }
+
+    private async void OnErrorIconTapped(object? sender, TappedEventArgs e)
+    {
+        string? msg = null;
+        if (e.Parameter is CloudAccount cloud)
+            msg = cloud.LastErrorMessage;
+        else if (e.Parameter is CodexAccount codex)
+            msg = codex.LastErrorMessage;
+
+        if (!string.IsNullOrEmpty(msg))
+        {
+            string title = "Update Failed";
+            string description = msg;
+            string msgLower = msg.ToLowerInvariant();
+
+            if (msgLower.Contains("invalid or zeroed quota data") || msgLower.Contains("all elements are null"))
+            {
+                title = "Server Cache Delay (Stale Data)";
+                description = "The API server temporarily returned expired cache data (all zeros). To protect your existing display data, the update has been paused.\n\nPlease try again by clicking the refresh (↻) button in a few moments.";
+            }
+            else if (msgLower.Contains("invalid_grant") || msgLower.Contains("failed to fetch") || msgLower.Contains("authorization") || msgLower.Contains("unauthorized") || msgLower.Contains("expired"))
+            {
+                title = "Authentication Expired";
+                description = "The account login session has expired or lacks proper authorization.\n\nPlease remove this account using the 'REMOVE ACCOUNT' button, then log in again using the '+ Add Account' button at the top right.";
+            }
+            else if (msgLower.Contains("api error"))
+            {
+                title = "API Server Error";
+                description = "The API server responded with an error. This is usually a temporary backend issue.\n\nPlease try again later.";
+            }
+
+            await DisplayAlertAsync(title, description, "OK");
         }
     }
 
@@ -1205,7 +1590,15 @@ public partial class MainPage : ContentPage
         {
             IsBusy = true;
             await EnqueueRefreshAsync(account, RefreshQueueLevel.Immediate);
-            _accountManager.SaveAccounts();
+            _ = _accountManager.SaveAccountsAsync();
+            NotifyStatsChanged();
+            IsBusy = false;
+        }
+        else if (e.Parameter is CodexAccount codexAccount)
+        {
+            IsBusy = true;
+            await EnqueueRefreshAsync(codexAccount, RefreshQueueLevel.Immediate);
+            _ = _codexAccountManager.SaveAccountsAsync();
             NotifyStatsChanged();
             IsBusy = false;
         }
@@ -1223,7 +1616,7 @@ public partial class MainPage : ContentPage
                     account.HiddenModels.Add(modelInfo.display_name);
                     account.NotifyQuotaChanges();
                     RefreshGoogleAccountRow(account);
-                    _accountManager.SaveAccounts();
+                    _ = _accountManager.SaveAccountsAsync();
                     NotifyStatsChanged();
                 }
             }

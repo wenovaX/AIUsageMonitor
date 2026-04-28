@@ -43,12 +43,14 @@ public class CodexAccount : INotifyPropertyChanged
 		set { _email = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayEmail)); } 
 	}
 	
+	[JsonIgnore]
 	public string access_token 
 	{ 
 		get => _accessToken; 
 		set { _accessToken = value; OnPropertyChanged(); } 
 	}
 
+	[JsonIgnore]
 	public string refresh_token { get; set; } = string.Empty;
 	public string account_id { get; set; } = string.Empty;
 	public string login_method { get; set; } = "manual"; // "openai", "github", "manual"
@@ -144,6 +146,9 @@ public class CodexAccount : INotifyPropertyChanged
 			OnPropertyChanged(nameof(EffectiveRemainingPercent));
 			OnPropertyChanged(nameof(IsRateLimited));
 			OnPropertyChanged(nameof(PrimaryStatusText));
+			OnPropertyChanged(nameof(SecondaryStatusText));
+			OnPropertyChanged(nameof(HasSecondaryWindow));
+			OnPropertyChanged(nameof(SecondaryRemainingPercent));
 		}
 	}
 
@@ -204,6 +209,25 @@ public class CodexAccount : INotifyPropertyChanged
 		set { _hasError = value; OnPropertyChanged(); }
 	}
 
+	private string _lastErrorMessage = "";
+	[JsonIgnore]
+	public string LastErrorMessage
+	{
+		get => _lastErrorMessage;
+		set { _lastErrorMessage = value; OnPropertyChanged(); }
+	}
+
+	private string _promoMessage = "";
+	[JsonIgnore]
+	public string PromoMessage
+	{
+		get => _promoMessage;
+		set { _promoMessage = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasPromoMessage)); }
+	}
+
+	[JsonIgnore]
+	public bool HasPromoMessage => !string.IsNullOrWhiteSpace(PromoMessage);
+
 	[JsonIgnore]
 	public int DisplayIndex { get; set; }
 
@@ -219,7 +243,13 @@ public class CodexAccount : INotifyPropertyChanged
 	public int PrimaryRemainingPercent => Math.Max(0, 100 - primaryUsedPercent);
 
 	[JsonIgnore]
-	public int EffectiveRemainingPercent => IsWeeklyBlocked ? 0 : PrimaryRemainingPercent;
+	public int EffectiveRemainingPercent => PrimaryRemainingPercent; // Show true usage even if weekly blocked
+
+	[JsonIgnore]
+	public int SecondaryRemainingPercent => Math.Max(0, 100 - secondaryUsedPercent);
+
+	[JsonIgnore]
+	public bool HasSecondaryWindow => !string.IsNullOrWhiteSpace(secondaryWindowLabel);
 
 	[JsonIgnore]
 	public bool IsPrimaryWindowExhausted => PrimaryRemainingPercent <= 1;
@@ -230,9 +260,10 @@ public class CodexAccount : INotifyPropertyChanged
 		secondaryUsedPercent >= 100;
 
 	[JsonIgnore]
-	public string PrimaryStatusText => IsWeeklyBlocked
-		? $"Weekly reset: {secondaryResetDescription}"
-		: $"Resets: {primaryResetDescription}";
+	public string PrimaryStatusText => $"Resets: {primaryResetDescription}";
+
+	[JsonIgnore]
+	public string SecondaryStatusText => $"Resets: {secondaryResetDescription}";
 
 	[JsonIgnore]
 	public string SecondaryResetHeader => string.IsNullOrWhiteSpace(secondaryWindowLabel)
@@ -245,11 +276,11 @@ public class CodexAccount : INotifyPropertyChanged
 		get
 		{
 			if (IsWeeklyBlocked && IsPrimaryWindowExhausted)
-				return "WEEKLY + 5H";
+				return "WEEKLY & 5H BLOCKED";
 			if (IsWeeklyBlocked)
-				return "WEEKLY LIMITED";
+				return "WEEKLY BLOCKED";
 			if (IsPrimaryWindowExhausted)
-				return $"{primaryWindowLabel.ToUpperInvariant()} LIMITED";
+				return $"{primaryWindowLabel.ToUpperInvariant()} BLOCKED";
 			return string.Empty;
 		}
 	}
@@ -258,7 +289,7 @@ public class CodexAccount : INotifyPropertyChanged
 	public bool HasUsageLimitBadge => !string.IsNullOrWhiteSpace(UsageLimitBadgeText);
 
 	[JsonIgnore]
-	public bool IsRateLimited => EffectiveRemainingPercent <= 1;
+	public bool IsRateLimited => IsWeeklyBlocked || IsPrimaryWindowExhausted;
 
 	[JsonIgnore]
 	public string PlanDisplay => string.IsNullOrEmpty(plan_type) ? "—" : 
@@ -271,4 +302,9 @@ public class CodexAccount : INotifyPropertyChanged
 	public event PropertyChangedEventHandler? PropertyChanged;
 	protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
 		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+public class CodexAccountRow
+{
+	public System.Collections.ObjectModel.ObservableCollection<CodexAccount> Accounts { get; } = new();
 }

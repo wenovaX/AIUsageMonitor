@@ -183,6 +183,7 @@ public class GoogleApiService
                 successfulEndpointCount++;
 
                 var json = await response.Content.ReadAsStringAsync();
+                result.RawJsonDump = json;
                 using var doc = JsonDocument.Parse(json);
                 
                 if (doc.RootElement.TryGetProperty("models", out var modelsProp))

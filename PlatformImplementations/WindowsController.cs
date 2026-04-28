@@ -18,6 +18,7 @@ public class WindowsController : BasePlatformController
 {
     private bool _isExiting;
     private bool _isTrayIconInitialized;
+    private bool _isResizeMoveActive;
 
 #if WINDOWS
     private TaskbarIcon? _trayIcon;
@@ -25,7 +26,6 @@ public class WindowsController : BasePlatformController
     private Microsoft.UI.Xaml.Window? _platformWindow;
     private IntPtr _windowHandle;
     private SubclassProc? _subclassProc;
-    private bool _isResizeMoveActive;
 #endif
 
     public override bool SupportsTray => true;

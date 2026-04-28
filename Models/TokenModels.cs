@@ -53,6 +53,7 @@ public class CloudAccount : INotifyPropertyChanged
         set { _access_token = value; OnPropertyChanged(); } 
     }
     
+    [JsonIgnore]
     public string? refresh_token { get; set; }
     public DateTime? expires_at { get; set; }
     public DateTime? last_updated { get; set; }
@@ -89,6 +90,14 @@ public class CloudAccount : INotifyPropertyChanged
     {
         get => _hasError;
         set { _hasError = value; OnPropertyChanged(); }
+    }
+
+    private string _lastErrorMessage = "";
+    [JsonIgnore]
+    public string LastErrorMessage
+    {
+        get => _lastErrorMessage;
+        set { _lastErrorMessage = value; OnPropertyChanged(); }
     }
 
     // For Simple Binding to avoid MultiBinding errors
@@ -158,6 +167,45 @@ public class CloudAccount : INotifyPropertyChanged
             NotifyQuotaChanges();
             OnPropertyChanged(nameof(VisibilityItems));
         } 
+    }
+
+    public void UpdateQuotas(System.Collections.Generic.IEnumerable<ModelQuotaInfo> newQuotas)
+    {
+        bool structureChanged = false;
+        var existingDict = System.Linq.Enumerable.ToDictionary(_quotas, q => q.display_name);
+        var newDict = System.Linq.Enumerable.ToDictionary(newQuotas, q => q.display_name);
+
+        foreach (var newQ in newQuotas)
+        {
+            if (existingDict.TryGetValue(newQ.display_name, out var oldQ))
+            {
+                // Equality check
+                if (oldQ.percentage != newQ.percentage)
+                    oldQ.percentage = newQ.percentage;
+                
+                if (!string.IsNullOrWhiteSpace(newQ.resetTime) && oldQ.resetTime != newQ.resetTime)
+                    oldQ.resetTime = newQ.resetTime;
+            }
+            else
+            {
+                _quotas.Add(newQ);
+                structureChanged = true;
+            }
+        }
+
+        for (int i = _quotas.Count - 1; i >= 0; i--)
+        {
+            if (!newDict.ContainsKey(_quotas[i].display_name))
+            {
+                _quotas.RemoveAt(i);
+                structureChanged = true;
+            }
+        }
+
+        if (structureChanged)
+        {
+            NotifyQuotaChanges();
+        }
     }
 
     public void NotifyQuotaChanges()
@@ -345,13 +393,13 @@ public class ModelQuotaInfo : INotifyPropertyChanged
     public int percentage 
     { 
         get => _percentage; 
-        set { _percentage = value; OnPropertyChanged(); } 
+        set { if (_percentage == value) return; _percentage = value; OnPropertyChanged(); } 
     }
     
     public string resetTime 
     { 
         get => _resetTime; 
-        set { _resetTime = value; OnPropertyChanged(); } 
+        set { if (_resetTime == value) return; _resetTime = value; OnPropertyChanged(); } 
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -362,6 +410,9 @@ public class ModelQuotaInfo : INotifyPropertyChanged
 public class QuotaData
 {
     public Dictionary<string, ModelQuotaInfo> models { get; set; } = new();
+    
+    [JsonIgnore]
+    public string RawJsonDump { get; set; } = "";
 }
 
 public class TokenResponse

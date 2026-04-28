@@ -126,6 +126,26 @@
                     </VisualStateGroupList>
                 </Setter>
             </Style>
+
+            <!-- Error Button Style -->
+            <Style x:Key="ErrorButtonStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="Padding" Value="6,2" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 4" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#1aef4444" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -286,8 +306,13 @@
                                         <!-- Loading & Error Indicator -->
                                         <HorizontalStackLayout Grid.Column="2" Spacing="5" VerticalOptions="Center">
                                             <Label Text="⏳ Waiting" TextColor="{StaticResource Slate400}" FontSize="10" FontAttributes="Bold" IsVisible="{Binding IsRefreshQueued}" VerticalOptions="Center" />
-                                            <ActivityIndicator IsRunning="{Binding IsRefreshing}" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
-                                            <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" IsVisible="{Binding HasError}" ToolTipProperties.Text="Failed to update account" VerticalOptions="Center" />
+                                            <ActivityIndicator IsRunning="True" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
+                                            <Border Style="{StaticResource ErrorButtonStyle}" IsVisible="{Binding HasError}" ToolTipProperties.Text="Click for error details">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnErrorIconTapped" CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
                                         </HorizontalStackLayout>
                                     </Grid>
                                     
@@ -373,15 +398,13 @@
 
             <!-- TAB CONTENT: CODEX -->
             <ScrollView Grid.Row="2" Padding="20" IsVisible="{Binding IsCodexTab}">
-                <FlexLayout BindableLayout.ItemsSource="{Binding CodexAccounts}" 
-                            Wrap="Wrap" 
-                            JustifyContent="Start" 
-                            AlignItems="Start"
-                            AlignContent="Start">
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding CodexAccountRows}" Spacing="5">
                     <BindableLayout.ItemTemplate>
-
-                    <DataTemplate x:DataType="models:CodexAccount">
-                        <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                        <DataTemplate x:DataType="models:CodexAccountRow">
+                            <HorizontalStackLayout BindableLayout.ItemsSource="{Binding Accounts}" Spacing="5">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="models:CodexAccount">
+                        <Border Margin="0,0,0,0" Padding="0" WidthRequest="240" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
                             <Border.Shadow><Shadow Brush="Black" Offset="0,6" Radius="15" Opacity="0.5" /></Border.Shadow>
                             <Grid RowDefinitions="Auto, *, Auto">
                                 <!-- Card Header -->
@@ -398,8 +421,13 @@
                                         <!-- Loading & Error Indicator -->
                                         <HorizontalStackLayout Grid.Column="2" Spacing="5" VerticalOptions="Center">
                                             <Label Text="⏳ Waiting" TextColor="{StaticResource Slate400}" FontSize="10" FontAttributes="Bold" IsVisible="{Binding IsRefreshQueued}" VerticalOptions="Center" />
-                                            <ActivityIndicator IsRunning="{Binding IsRefreshing}" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
-                                            <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" IsVisible="{Binding HasError}" ToolTipProperties.Text="Failed to update account" VerticalOptions="Center" />
+                                            <ActivityIndicator IsRunning="True" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
+                                            <Border Style="{StaticResource ErrorButtonStyle}" IsVisible="{Binding HasError}" ToolTipProperties.Text="Click for error details">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnErrorIconTapped" CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
                                         </HorizontalStackLayout>
                                     </Grid>
                                     
@@ -417,10 +445,10 @@
                                 </VerticalStackLayout>
                                 
                                 <!-- Usage Data (Middle Area) -->
-                                <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="6">
+                                <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="5">
                                     
                                     <!-- Primary Window (main usage gauge) -->
-                                    <VerticalStackLayout Spacing="3">
+                                    <VerticalStackLayout Spacing="2">
                                         <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
                                             <Label Text="{Binding primaryWindowLabel}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
                                             <Border Grid.Column="1" IsVisible="{Binding HasUsageLimitBadge}" BackgroundColor="#1aef4444" StrokeThickness="0" StrokeShape="RoundRectangle 4" Padding="6,2">
@@ -440,14 +468,29 @@
                                         </Border>
                                     </VerticalStackLayout>
 
-                                    <!-- Secondary Window (reset date, not a gauge) -->
-                                    <Grid ColumnDefinitions="*, Auto" Padding="0">
-                                        <Label Text="{Binding SecondaryResetHeader}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" TextTransform="Uppercase" />
-                                        <Label Grid.Column="1" Text="{Binding secondaryResetDate}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
-                                    </Grid>
+                                    <!-- Secondary Window (gauge) -->
+                                    <VerticalStackLayout Spacing="3" IsVisible="{Binding HasSecondaryWindow}">
+                                        <Label Text="{Binding SecondaryResetHeader}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
+                                            <Grid BackgroundColor="{StaticResource Slate700}" VerticalOptions="Center">
+                                                <ProgressBar ScaleY="6" Progress="{Binding SecondaryRemainingPercent, Converter={StaticResource PercentageConverter}}" 
+                                                             ProgressColor="{Binding SecondaryRemainingPercent, Converter={StaticResource PercentageColorConverter}}" 
+                                                             BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                    <Label Text="{Binding SecondaryStatusText}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                    <Label Grid.Column="2" Text="{Binding SecondaryRemainingPercent, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                    </VerticalStackLayout>
+
+                                    <!-- Promo Message -->
+                                    <Border BackgroundColor="#1a60a5fa" StrokeShape="RoundRectangle 6" StrokeThickness="0" Padding="8,6" Margin="0,2,0,0" IsVisible="{Binding HasPromoMessage}">
+                                        <Label Text="{Binding PromoMessage}" FontSize="8" TextColor="{StaticResource Sky400}" LineBreakMode="WordWrap" />
+                                    </Border>
 
                                     <!-- Credits -->
-                                    <Grid ColumnDefinitions="*, Auto" Padding="0,4,0,0">
+                                    <Grid ColumnDefinitions="*, Auto">
                                         <Label Text="CREDITS" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" />
                                         <Label Grid.Column="1" Text="{Binding CreditsDisplay}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
                                     </Grid>
@@ -456,13 +499,16 @@
                                 <!-- Bottom Button -->
                                 <Button Grid.Row="2" Text="REMOVE ACCOUNT" Clicked="OnDeleteCodexAccountClicked" CommandParameter="{Binding id}" 
                                         Style="{StaticResource RemoveButtonStyle}" 
-                                        FontSize="9" CharacterSpacing="1.2" HorizontalOptions="Fill" HeightRequest="36" Padding="0" 
+                                        FontSize="9" CharacterSpacing="1.2" HorizontalOptions="Fill" HeightRequest="30" Padding="0" 
                                         CornerRadius="0" BorderWidth="0" VerticalOptions="End" />
                             </Grid>
                         </Border>
-                    </DataTemplate>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </DataTemplate>
                     </BindableLayout.ItemTemplate>
-                </FlexLayout>
+                </VerticalStackLayout>
             </ScrollView>
 
             <!-- SETTINGS PANEL -->
@@ -662,6 +708,52 @@
                             BackgroundColor="{StaticResource Slate700}" TextColor="{StaticResource Slate100}" 
                             CornerRadius="8" HeightRequest="40" Padding="32,0" FontSize="13" FontAttributes="Bold" Margin="0,8,0,0" />
                 </VerticalStackLayout>
+            </Grid>
+
+            <!-- CODEX LOGIN OVERLAY (Automated Extraction) -->
+            <Grid Grid.RowSpan="3" IsVisible="{Binding IsCodexLoginOverlayVisible}" BackgroundColor="{StaticResource Slate900}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <Grid Padding="15" BackgroundColor="{StaticResource Slate800}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    
+                    <VerticalStackLayout VerticalOptions="Center">
+                        <Label Text="ChatGPT Login" FontSize="16" FontAttributes="Bold" TextColor="{StaticResource Slate50}"/>
+                        <Label Text="Please log in. We will automatically capture the token." FontSize="12" TextColor="{StaticResource Slate400}"/>
+                    </VerticalStackLayout>
+                    
+                    <Button Grid.Column="1" Text="Cancel" TextColor="{StaticResource Slate50}" Clicked="OnCancelCodexLoginClicked">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Slate600}" />
+                                <Setter Property="VisualStateManager.VisualStateGroups">
+                                    <VisualStateGroupList>
+                                        <VisualStateGroup x:Name="CommonStates">
+                                            <VisualState x:Name="Normal">
+                                                <VisualState.Setters>
+                                                    <Setter Property="BackgroundColor" Value="{StaticResource Slate600}" />
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                            <VisualState x:Name="PointerOver">
+                                                <VisualState.Setters>
+                                                    <Setter Property="BackgroundColor" Value="{StaticResource Slate500}" />
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                        </VisualStateGroup>
+                                    </VisualStateGroupList>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+                
+                <WebView x:Name="CodexLoginWebView" Grid.Row="1" Navigated="OnCodexLoginWebViewNavigated" />
             </Grid>
 
             <ProgressBar Grid.RowSpan="3" IsVisible="{Binding IsBusy}" Progress="0.5" VerticalOptions="Start" HeightRequest="2" ProgressColor="{StaticResource Emerald500}" BackgroundColor="Transparent" />

@@ -1,5 +1,7 @@
 # AIUsageMonitor
 
+> Korean README: [README.kr.md](README.kr.md)
+
 > Premium AI usage monitoring dashboard for Antigravity and Codex.
 
 ![AIUsageMonitor Header](Resources/Images/app_title.png)
@@ -45,19 +47,42 @@ Download the latest build from the Releases page.
 ## Requirements
 
 - .NET 10.0 SDK
-- Visual Studio 2022 with .NET MAUI workload
+- Visual Studio 2026 with .NET MAUI workload
 - Windows 10/11
 
 ## Build from Source
 
 1. Clone the repository.
-2. Open `AIUsageMonitor.sln` in Visual Studio 2022.
+2. Open `AIUsageMonitor.sln` in Visual Studio.
 3. Restore NuGet packages.
 4. Run the `Windows Machine` target.
 
-## Authentication
+# Authentication
 
-### Antigravity (Google)
+# ### Antigravity (Google)
+1. Open the **Antigravity** tab.
+2. Click **+ Add Account**.
+3. The Google OAuth flow opens in an in‑app browser window.
+4. After authorisation, the app securely stores the **access** and **refresh** tokens in `SecureStorage`.
+5. Tokens are stored encrypted using the platform’s SecureStorage API, protecting them from plain‑text exposure.
+6. A background refresh scheduler automatically renews the tokens 5 minutes before expiry, running on a limited‑concurrency queue to avoid rate‑limit issues and ensuring seamless quota updates without UI blocking.
+1. Open the **Antigravity** tab.
+2. Click **+ Add Account**.
+3. The Google OAuth flow opens in an in‑app browser window.
+4. After authorisation, the app securely stores the **access** and **refresh** tokens in `SecureStorage`.
+5. Tokens are automatically refreshed in the background 5 minutes before expiry, ensuring seamless quota updates without user interaction.
+
+### Codex (OpenAI / GitHub)
+1. Open the **Codex** tab.
+2. Click **+ Add Account**.
+3. Choose **OpenAI login**, **GitHub (Copilot) login**, or **Manual token entry**.
+4. For OpenAI, a WebView loads the ChatGPT login page; the app extracts the `accessToken` via injected JavaScript once authentication completes.
+5. The extracted token (and optional user info) is saved securely.  A background refresh scheduler uses the refresh token (if provided) to obtain a new access token before expiration.
+6. For GitHub, a device‑code flow is used; the app polls for the token and stores it securely.
+7. All tokens are refreshed automatically, and any expiration prompts the user to re‑login.
+
+
+
 1. Open the Antigravity tab.
 2. Click `+ Add Account`.
 3. Complete the Google OAuth flow in the browser.
@@ -83,7 +108,7 @@ Download the latest build from the Releases page.
 
 ## Notes
 
-- Version: `v1.0.4`
+- Version: `v1.0.5`
 - Windows tray behavior is handled through the platform controller layer.
 - The tray icon is shipped as `trayicon.ico` for more reliable Windows system tray rendering.
 
