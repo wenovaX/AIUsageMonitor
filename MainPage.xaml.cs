@@ -1735,4 +1735,14 @@ public partial class MainPage : ContentPage
     {
         await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://openai.com/codex/");
     }
+
+    private async void OnOpenGitHubSourceClicked(object? sender, EventArgs e)
+    {
+        await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://github.com/wenovaX/AIUsageMonitor");
+    }
+
+    private async void OnOpenGitHubReleasesClicked(object? sender, EventArgs e)
+    {
+        await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://github.com/wenovaX/AIUsageMonitor/releases");
+    }
 }

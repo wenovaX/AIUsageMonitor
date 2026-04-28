@@ -656,6 +656,23 @@
                         </VerticalStackLayout>
                     </Border>
 
+                    <HorizontalStackLayout Spacing="10">
+                        <Button Text="GitHub Source"
+                                Clicked="OnOpenGitHubSourceClicked"
+                                BackgroundColor="{StaticResource Slate700}"
+                                TextColor="{StaticResource Slate100}"
+                                Padding="20,0"
+                                HeightRequest="40"
+                                HorizontalOptions="Start" />
+                        <Button Text="GitHub Releases"
+                                Clicked="OnOpenGitHubReleasesClicked"
+                                BackgroundColor="{StaticResource Slate700}"
+                                TextColor="{StaticResource Slate100}"
+                                Padding="20,0"
+                                HeightRequest="40"
+                                HorizontalOptions="Start" />
+                    </HorizontalStackLayout>
+
                     <Label Text="Made with ❤️ for AI power users" FontSize="10" TextColor="{StaticResource Slate600}" HorizontalOptions="Center" Margin="0,10,0,30" />
                 </VerticalStackLayout>
             </ScrollView>
