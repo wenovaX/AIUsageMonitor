@@ -1,6 +1,6 @@
 # AIUsageMonitor
 
-> Antigravity와 Codex 사용량을 한 화면에서 확인하는 Windows 중심 AI 사용량 모니터링 앱
+> Antigravity, Codex, Cursor 사용량을 한 화면에서 확인하는 Windows 중심 AI 사용량 모니터링 앱
 
 ![AIUsageMonitor Header](Resources/Images/app_title.png)
 
@@ -23,6 +23,7 @@ AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 시점을
 ### 멀티 서비스 지원
 - Antigravity 계정 및 모델 사용량 추적
 - Codex 세션 제한과 주간 제한 모니터링
+- Cursor 로컬 DB 기반 Composer context 사용량 모니터링
 - 여러 계정을 한 대시보드에서 통합 관리
 
 ### Windows tray 워크플로우
@@ -40,21 +41,32 @@ AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 시점을
 ### 프라이버시와 사용성
 - 화면 공유용 Anonymous 모드
 - Antigravity 모델 목록 수동 관리
-- Google / Codex / Settings / About 탭 구성
+- Cursor 계정 카드 이름 변경 지원
+- Antigravity / Codex / Cursor / Settings / About 탭 구성
 
 ## Antigravity 모델 목록
 
 - 앱 시작 시 기본 모델 목록과 순서를 사용합니다.
-  - `Gemini 3.1 Pro (High)`
-  - `Gemini 3.1 Pro (Low)`
-  - `Gemini 3 Flash`
-  - `Claude Sonnet 4.6 (Thinking)`
-  - `Claude Opus 4.6 (Thinking)`
-  - `GPT-OSS 120B (Medium)`
+- `Gemini 3.1 Pro (High)`
+- `Gemini 3.1 Pro (Low)`
+- `Gemini 3 Flash`
+- `Claude Sonnet 4.6 (Thinking)`
+- `Claude Opus 4.6 (Thinking)`
+- `GPT-OSS 120B (Medium)`
 - `Update Model List`는 이미 받아온 Antigravity quota 데이터 기준으로 모델을 추가합니다.
 - 새로 발견된 모델은 기본적으로 `OFF` 상태로만 추가됩니다.
 - `Set to Default`는 기본 모델 목록으로 되돌립니다.
 - 현재 데이터에 없는 항목은 삭제하지 않고 Settings에서 `Missing`으로 표시합니다.
+
+## Cursor 모니터링
+
+- Cursor 탭은 `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 로컬 DB를 읽습니다.
+- Cursor가 설치되어 있지 않거나 로그인되어 있지 않으면 설치/로그인 안내와 `https://cursor.com/` 열기 버튼을 표시합니다.
+- `Add Current Account`를 누르면 현재 Cursor에 로그인된 로컬 세션을 가져옵니다.
+- Cursor ID/PW 입력은 필요하지 않습니다.
+- Cursor 카드는 Composer context 사용률, 남은 context, reset date, 바닥 도달 상태를 보여줍니다.
+- 같은 reset window 안에서는 가장 높았던 context 사용률을 유지해, reset 전인데 사용량이 회복된 것처럼 보이는 상황을 줄입니다.
+- Cursor 세션에서 이메일이나 닉네임을 안정적으로 얻기 어려워 카드 이름은 직접 바꿀 수 있습니다.
 
 ## 요구 사항
 
@@ -65,29 +77,34 @@ AIUsageMonitor는 여러 AI 계정의 사용량, 제한 상태, 리셋 시점을
 ## 소스에서 실행
 
 1. 저장소를 클론합니다.
-2. Visual Studio 에서 `AIUsageMonitor.sln`을 엽니다.
+2. Visual Studio에서 `AIUsageMonitor.sln`을 엽니다.
 3. NuGet 패키지를 복원합니다.
 4. `Windows Machine` 대상으로 실행합니다.
 
 ## 인증
 
 ### Antigravity (Google)
-1. Open the Antigravity tab.
-2. Click **+ Add Account**.
-3. The Google OAuth flow opens in an in‑app browser.
-4. After authorisation, the app securely stores the access and refresh tokens in `SecureStorage` (encrypted by the OS).
-5. A background scheduler automatically refreshes the tokens 5 minutes before expiry, using a limited‑concurrency queue to avoid rate‑limit issues.
+1. Antigravity 탭을 엽니다.
+2. **+ Add Account**를 누릅니다.
+3. Google OAuth 흐름을 완료합니다.
+4. access token과 refresh token은 플랫폼 보안 저장소를 통해 로컬에 저장됩니다.
+5. refresh token이 있으면 만료 전에 백그라운드에서 갱신합니다.
 
 ### Codex (OpenAI / GitHub)
-1. Open the Codex tab.
-2. Click **+ Add Account**.
-3. Choose OpenAI login, GitHub (Copilot) login, or manual token entry.
-4. For OpenAI, a WebView loads the ChatGPT login page; the app extracts the `accessToken` via injected JavaScript.
-5. Extracted tokens are saved securely; a background refresh scheduler renews them before expiration (if a refresh token is available). For GitHub, a device‑code flow is used with similar secure storage.
+1. Codex 탭을 엽니다.
+2. **+ Add Account**를 누릅니다.
+3. OpenAI login, GitHub login, manual token entry 중 하나를 선택합니다.
+4. 추출된 세션/토큰 정보는 로컬에 저장되며 refresh queue를 통해 quota 정보를 갱신합니다.
+
+### Cursor
+1. Cursor를 먼저 설치하고 로그인합니다.
+2. Cursor 탭을 엽니다.
+3. **Add Current Account**를 누릅니다.
+4. 앱이 로컬 Cursor DB에서 현재 세션을 읽어 계정을 추가합니다.
 
 ## 참고
 
-- 버전: `v1.0.5`
+- 버전: `v1.0.6`
 - Windows tray 동작은 platform controller 계층에서 관리합니다.
 - tray 아이콘은 Windows 호환성을 위해 `trayicon.ico`로 배포합니다.
 

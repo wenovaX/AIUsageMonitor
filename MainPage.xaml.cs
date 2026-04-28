@@ -30,8 +30,11 @@ public partial class MainPage : ContentPage
     private readonly GoogleRadarService _googleRadar;
     private readonly AccountManagerService _accountManager = new();
     private readonly CodexAccountManagerService _codexAccountManager = new();
+    private readonly CursorAccountManagerService _cursorAccountManager = new();
+    private readonly CursorDbTokenService _cursorDbTokenService = new();
     private readonly OpenAIAuthService _openAIAuth = new();
     private readonly CodexApiService _codexApi = new();
+    private readonly CursorApiService _cursorApi = new();
     private readonly PlatformManager _platformManager;
     private readonly TokenStorageService _tokenStorage;
     private const double GoogleCardWidth = 240;
@@ -82,14 +85,23 @@ public partial class MainPage : ContentPage
 
             OnPropertyChanged(); 
             OnPropertyChanged(nameof(IsGoogleTab));
+            OnPropertyChanged(nameof(IsCursorTab));
             OnPropertyChanged(nameof(IsCodexTab));
             OnPropertyChanged(nameof(IsSettingsTab));
             OnPropertyChanged(nameof(IsAboutTab));
+            OnPropertyChanged(nameof(CanAddAccount));
+            OnPropertyChanged(nameof(AddAccountButtonText));
+
+            if (value == "Cursor")
+            {
+                RefreshCursorDbState();
+            }
             NotifyStatsChanged();
         }
     }
 
     public bool IsGoogleTab => CurrentTab == "Google";
+    public bool IsCursorTab => CurrentTab == "Cursor";
     public bool IsCodexTab => CurrentTab == "Codex";
     public bool IsSettingsTab => CurrentTab == "Settings";
     public bool IsAboutTab => CurrentTab == "About";
@@ -136,6 +148,7 @@ public partial class MainPage : ContentPage
 
     private readonly SemaphoreSlim _globalRefreshSemaphore;
     private readonly SemaphoreSlim _googleRefreshSemaphore;
+    private readonly SemaphoreSlim _cursorRefreshSemaphore;
     private readonly SemaphoreSlim _codexRefreshSemaphore;
     private readonly int _maxGlobalRefreshConcurrency;
     private readonly int _maxGoogleRefreshConcurrency;
@@ -166,12 +179,30 @@ public partial class MainPage : ContentPage
         set { _isCodexLoginOverlayVisible = value; OnPropertyChanged(); }
     }
 
-    public const string AppVersion = "1.0.5";
+    public const string AppVersion = "1.0.6";
     public string DisplayVersion => $"v{AppVersion}";
 
     private CancellationTokenSource? _loginCts;
     private bool _isProcessingCodexLogin;
     private readonly object _refreshSchedulersLock = new();
+    private bool _isCursorCredentialLoginWaiting;
+
+    public bool IsCursorCredentialLoginWaiting
+    {
+        get => _isCursorCredentialLoginWaiting;
+        set { _isCursorCredentialLoginWaiting = value; OnPropertyChanged(); }
+    }
+
+    public string CursorStoragePath => _cursorAccountManager.StorageDirectory;
+    public string CursorDbPath => _cursorDbPath;
+    public bool IsCursorDbAvailable => _isCursorDbAvailable;
+    public bool IsCursorDbMissing => IsCursorTab && !_isCursorDbAvailable;
+    public string CursorDbStatusMessage => _cursorDbStatusMessage;
+    public bool CanAddAccount => !IsCursorTab || IsCursorDbAvailable;
+    public string AddAccountButtonText => IsCursorTab ? "+ Add Current Account" : "+ Add Account";
+    private bool _isCursorDbAvailable;
+    private string _cursorDbPath = "Not found";
+    private string _cursorDbStatusMessage = "Cursor 설치가 필요합니다.";
 
     // Shared Settings Panel Logic
     private CloudAccount? _selectedAccount;
@@ -186,19 +217,28 @@ public partial class MainPage : ContentPage
     // Tab-aware stats
     public int GlobalActions => CurrentTab == "Codex"
         ? CodexAccounts.Count
+        : CurrentTab == "Cursor"
+        ? CursorAccounts.Count
         : GetVisibleGoogleQuotasSnapshot().Count;
     public int GlobalActive => CurrentTab == "Codex"
         ? CodexAccounts.Count(a => !a.IsRateLimited)
+        : CurrentTab == "Cursor"
+        ? CursorAccounts.Count(a => a.context_usage_percent < 99.5)
         : GetVisibleGoogleQuotasSnapshot().Count(q => q.percentage > 0);
     public int GlobalLimited => CurrentTab == "Codex"
         ? CodexAccounts.Count(a => a.IsRateLimited)
+        : CurrentTab == "Cursor"
+        ? CursorAccounts.Count(a => a.context_bottom_hit || a.context_usage_percent >= 99.5)
         : GetVisibleGoogleQuotasSnapshot().Count(q => q.percentage == 0);
     public int GlobalQuota => CurrentTab == "Codex"
         ? (CodexAccounts.Count == 0 ? 0 : (int)CodexAccounts.Average(a => a.PrimaryRemainingPercent))
+        : CurrentTab == "Cursor"
+        ? (CursorAccounts.Count == 0 ? 0 : (int)CursorAccounts.Average(a => Math.Max(0, 100 - a.context_usage_percent)))
         : GetVisibleGoogleQuotaAverage();
 
     public ObservableCollection<CloudAccount> Accounts => _accountManager.Accounts;
     public ObservableCollection<CodexAccount> CodexAccounts => _codexAccountManager.Accounts;
+    public ObservableCollection<CursorAccount> CursorAccounts => _cursorAccountManager.Accounts;
 
     private bool _isMinimizedToTray = false;
 
@@ -210,6 +250,7 @@ public partial class MainPage : ContentPage
         (_maxGlobalRefreshConcurrency, _maxGoogleRefreshConcurrency, _maxCodexRefreshConcurrency) = CalculateRefreshConcurrency();
         _globalRefreshSemaphore = new SemaphoreSlim(_maxGlobalRefreshConcurrency, _maxGlobalRefreshConcurrency);
         _googleRefreshSemaphore = new SemaphoreSlim(_maxGoogleRefreshConcurrency, _maxGoogleRefreshConcurrency);
+        _cursorRefreshSemaphore = new SemaphoreSlim(_maxCodexRefreshConcurrency, _maxCodexRefreshConcurrency);
         _codexRefreshSemaphore = new SemaphoreSlim(_maxCodexRefreshConcurrency, _maxCodexRefreshConcurrency);
         Debug.WriteLine($"Refresh queue initialized. Global={_maxGlobalRefreshConcurrency}, Google={_maxGoogleRefreshConcurrency}, Codex={_maxCodexRefreshConcurrency}");
 
@@ -225,6 +266,7 @@ public partial class MainPage : ContentPage
         DoubleClickTrayIconCommand = new Command(() => OnShowAppFromTray(null, EventArgs.Empty));
         Accounts.CollectionChanged += OnAccountsCollectionChanged;
         CodexAccounts.CollectionChanged += OnCodexAccountsCollectionChanged;
+        CursorAccounts.CollectionChanged += OnCursorAccountsCollectionChanged;
         _modelCatalogService.CatalogChanged += OnModelCatalogChanged;
         UpdateDisplayIndices();
         foreach (var account in Accounts)
@@ -241,6 +283,8 @@ public partial class MainPage : ContentPage
     {
         await _accountManager.LoadAccountsAsync();
         await _codexAccountManager.LoadAccountsAsync();
+        await _cursorAccountManager.LoadAccountsAsync();
+        RefreshCursorDbState();
 
         UpdateDisplayIndices();
         UpdateCodexDisplayIndices();
@@ -254,6 +298,7 @@ public partial class MainPage : ContentPage
         RebuildCodexAccountRows();
 
         _ = RefreshAllAccounts(RefreshQueueLevel.Background);
+        _ = RefreshAllCursorAccounts(RefreshQueueLevel.Background);
         _ = RefreshAllCodexAccounts(RefreshQueueLevel.Background);
     }
 
@@ -301,6 +346,7 @@ public partial class MainPage : ContentPage
         }
         _googleRowRefreshCts.Clear();
         Accounts.CollectionChanged -= OnAccountsCollectionChanged;
+        CursorAccounts.CollectionChanged -= OnCursorAccountsCollectionChanged;
         _modelCatalogService.CatalogChanged -= OnModelCatalogChanged;
         foreach (var account in Accounts)
         {
@@ -534,6 +580,11 @@ public partial class MainPage : ContentPage
         RebuildCodexAccountRows();
     }
 
+    private void OnCursorAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        NotifyStatsChanged();
+    }
+
     private void RebuildCodexAccountRows()
     {
         CodexAccountRows.Clear();
@@ -721,6 +772,7 @@ public partial class MainPage : ContentPage
             if (!_isMinimizedToTray)
             {
                 _ = RefreshAllAccounts(RefreshQueueLevel.Background);
+                _ = RefreshAllCursorAccounts(RefreshQueueLevel.Background);
                 _ = RefreshAllCodexAccounts(RefreshQueueLevel.Background);
             }
         });
@@ -756,6 +808,17 @@ public partial class MainPage : ContentPage
 
     private async void OnLoginClicked(object? sender, EventArgs e)
     {
+        if (CurrentTab == "Cursor")
+        {
+            if (!CanAddAccount)
+            {
+                await DisplayAlertAsync("Cursor Not Ready", "Cursor 설치/로그인 후 다시 시도해 주세요.", "OK");
+                return;
+            }
+            await PromptAddCursorAccount();
+            return;
+        }
+
         if (CurrentTab == "Codex")
         {
             await PromptAddCodexAccount();
@@ -820,6 +883,110 @@ public partial class MainPage : ContentPage
         {
             StartCodexWebViewLogin();
         }
+    }
+
+    private async Task PromptAddCursorAccount()
+    {
+        try
+        {
+            Trace.WriteLine("[Cursor] Add Current Account clicked.");
+            RefreshCursorDbState();
+            if (!IsCursorDbAvailable)
+            {
+                Trace.WriteLine("[Cursor] Add aborted: DB unavailable.");
+                await DisplayAlertAsync("Cursor Not Detected", "Cursor 설치/로그인 후 다시 시도해 주세요.", "OK");
+                return;
+            }
+
+            IsCursorCredentialLoginWaiting = true;
+            var session = await _cursorDbTokenService.TryReadCurrentSessionAsync();
+            Trace.WriteLine($"[Cursor] Session read result: success={session.Success}, db={session.DbPath}, msg={session.Message}");
+            if (!session.Success || string.IsNullOrWhiteSpace(session.SessionToken))
+                throw new Exception($"Cursor 세션을 읽지 못했습니다: {session.Message}");
+
+            var account = new CursorAccount
+            {
+                name = GetNextCursorDefaultName(),
+                email = string.Empty,
+                session_token = session.SessionToken
+            };
+
+            await UpdateCursorAccountData(account);
+            _cursorAccountManager.AddOrUpdateAccount(account);
+            NotifyStatsChanged();
+            Trace.WriteLine($"[Cursor] Account added/updated. email={account.email}, id={account.id}");
+            await DisplayAlertAsync("Success", "현재 Cursor 계정을 추가했습니다.", "OK");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Cursor] Add failed: {ex}");
+            await DisplayAlertAsync("Cursor Login Failed", ex.Message, "OK");
+        }
+        finally
+        {
+            IsCursorCredentialLoginWaiting = false;
+        }
+    }
+
+    private void RefreshCursorDbState()
+    {
+        var path = _cursorDbTokenService.FindCursorDbPath();
+        _isCursorDbAvailable = !string.IsNullOrWhiteSpace(path);
+        _cursorDbPath = path ?? "Not found";
+        _cursorDbStatusMessage = _isCursorDbAvailable ?
+            "Cursor DB detected. Click 'Add Current Account' above to add your currently logged-in account."
+            : "Please check your Cursor installation or login status. It will be detected automatically after installation and login.";
+
+        OnPropertyChanged(nameof(IsCursorDbAvailable));
+        OnPropertyChanged(nameof(IsCursorDbMissing));
+        OnPropertyChanged(nameof(CursorDbPath));
+        OnPropertyChanged(nameof(CursorDbStatusMessage));
+        OnPropertyChanged(nameof(CanAddAccount));
+        OnPropertyChanged(nameof(AddAccountButtonText));
+        Trace.WriteLine($"[Cursor] DB state refreshed. available={_isCursorDbAvailable}, path={_cursorDbPath}");
+    }
+
+    private async void OnOpenCursorStorageFolderClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+#if WINDOWS
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = _cursorAccountManager.StorageDirectory,
+                UseShellExecute = true
+            });
+#else
+            await Launcher.Default.OpenAsync(new OpenFileRequest
+            {
+                File = new ReadOnlyFile(_cursorAccountManager.StorageDirectory)
+            });
+#endif
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Open Folder Failed", ex.Message, "OK");
+        }
+    }
+
+    private async void OnOpenCursorHomeClicked(object? sender, EventArgs e)
+    {
+        await Launcher.Default.OpenAsync("https://cursor.com/");
+    }
+
+    private string GetNextCursorDefaultName()
+    {
+        var index = 1;
+        var existing = CursorAccounts
+            .Select(a => a.name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        while (existing.Contains($"user-{index}"))
+            index++;
+
+        return $"user-{index}";
     }
 
     private async void StartCodexWebViewLogin(bool clearSession = false)
@@ -1199,6 +1366,8 @@ public partial class MainPage : ContentPage
     {
         if (CurrentTab == "Codex")
             await RefreshAllCodexAccounts(RefreshQueueLevel.Background);
+        else if (CurrentTab == "Cursor")
+            await RefreshAllCursorAccounts(RefreshQueueLevel.Background);
         else
             await RefreshAllAccounts(RefreshQueueLevel.Background);
     }
@@ -1252,10 +1421,19 @@ public partial class MainPage : ContentPage
             c.IsRefreshQueued = true;
             c.HasError = false;
         }
+        else if (account is CursorAccount r)
+        {
+            if (r.IsRefreshing || r.IsRefreshQueued) return;
+            r.IsRefreshQueued = true;
+            r.HasError = false;
+        }
 
-        var providerSemaphore = account is CloudAccount
-            ? _googleRefreshSemaphore
-            : _codexRefreshSemaphore;
+        var providerSemaphore = account switch
+        {
+            CloudAccount => _googleRefreshSemaphore,
+            CursorAccount => _cursorRefreshSemaphore,
+            _ => _codexRefreshSemaphore
+        };
 
         if (queueLevel == RefreshQueueLevel.Background)
         {
@@ -1331,12 +1509,37 @@ public partial class MainPage : ContentPage
                     MainThread.BeginInvokeOnMainThread(() => codexAcc.IsRefreshing = false);
                 }
             }
+            else if (account is CursorAccount cursorAcc)
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    cursorAcc.IsRefreshQueued = false;
+                    cursorAcc.IsRefreshing = true;
+                });
+                try
+                {
+                    await RetryAsync(async () => await UpdateCursorAccountData(cursorAcc), 2, 10);
+                }
+                catch (Exception ex)
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        cursorAcc.HasError = true;
+                        cursorAcc.LastErrorMessage = ex.Message;
+                    });
+                }
+                finally
+                {
+                    MainThread.BeginInvokeOnMainThread(() => cursorAcc.IsRefreshing = false);
+                }
+            }
         }
         finally
         {
             // Always ensure queued state is cleared
             if (account is CloudAccount g2) g2.IsRefreshQueued = false;
             if (account is CodexAccount c2) c2.IsRefreshQueued = false;
+            if (account is CursorAccount r2) r2.IsRefreshQueued = false;
             providerSemaphore.Release();
             _globalRefreshSemaphore.Release();
         }
@@ -1382,6 +1585,23 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Debug.WriteLine($"Codex refresh error: {ex.Message}");
+        }
+    }
+
+    private async Task RefreshAllCursorAccounts(RefreshQueueLevel queueLevel = RefreshQueueLevel.Background)
+    {
+        if (CursorAccounts.Count == 0) return;
+        try
+        {
+            var tasks = CursorAccounts.Select(acc => EnqueueRefreshAsync(acc, queueLevel)).ToList();
+            await Task.WhenAll(tasks);
+
+            _ = _cursorAccountManager.SaveAccountsAsync();
+            NotifyStatsChanged();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Cursor refresh error: {ex.Message}");
         }
     }
 
@@ -1504,6 +1724,105 @@ public partial class MainPage : ContentPage
         }
     }
 
+    private async Task UpdateCursorAccountData(CursorAccount account)
+    {
+        Trace.WriteLine($"[Cursor] Update start. name={account.name}, email={account.email}, hasSession={!string.IsNullOrWhiteSpace(account.session_token)}, hasLoginId={!string.IsNullOrWhiteSpace(account.login_email)}");
+        (string? Email, int Used, int Limit, DateTime? ResetDate) result;
+        (double Percent, string ComposerName)? contextUsage = null;
+
+        if (!string.IsNullOrWhiteSpace(account.login_email) &&
+            !string.IsNullOrWhiteSpace(account.login_password))
+        {
+            var credentialResult = await _cursorApi.FetchMonthlyUsageWithCredentialsAsync(account.login_email, account.login_password);
+            result = (credentialResult.Email, credentialResult.Used, credentialResult.Limit, credentialResult.ResetDate);
+            if (!string.IsNullOrWhiteSpace(credentialResult.SessionToken))
+                account.session_token = credentialResult.SessionToken!;
+        }
+        else
+        {
+            if (account.session_token.Contains("%3A%3A", StringComparison.OrdinalIgnoreCase))
+            {
+                contextUsage = await _cursorDbTokenService.TryReadContextUsageAsync();
+            }
+
+            result = await _cursorApi.FetchMonthlyUsageAsync(account.session_token);
+        }
+
+        Trace.WriteLine($"[Cursor] Update fetched. apiEmail={(result.Email ?? "N/A")}, used={result.Used}, limit={result.Limit}");
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!string.IsNullOrWhiteSpace(result.Email))
+            {
+                account.email = result.Email!;
+            }
+            else if (string.IsNullOrWhiteSpace(account.email))
+            {
+                var userId = ExtractCursorUserId(account.session_token);
+                if (!string.IsNullOrWhiteSpace(userId))
+                {
+                    account.email = userId;
+                }
+            }
+            account.monthly_used = result.Used;
+            account.monthly_limit = result.Limit <= 0 ? 500 : result.Limit;
+            ApplyCursorContextUsage(account, contextUsage, result.ResetDate);
+            account.last_updated = DateTime.Now;
+        });
+    }
+
+    private static void ApplyCursorContextUsage(
+        CursorAccount account,
+        (double Percent, string ComposerName)? contextUsage,
+        DateTime? resetDate)
+    {
+        var now = DateTime.UtcNow;
+        var existingResetUtc = account.context_reset_date?.ToUniversalTime();
+        var incomingResetUtc = resetDate?.ToUniversalTime();
+
+        if (existingResetUtc.HasValue && now >= existingResetUtc.Value)
+        {
+            account.context_usage_percent = 0;
+            account.context_composer_name = string.Empty;
+            account.context_bottom_hit = false;
+        }
+
+        if (incomingResetUtc.HasValue)
+        {
+            account.context_reset_date = incomingResetUtc.Value;
+        }
+
+        if (contextUsage is null)
+            return;
+
+        var sameResetWindow =
+            existingResetUtc.HasValue &&
+            incomingResetUtc.HasValue &&
+            Math.Abs((existingResetUtc.Value - incomingResetUtc.Value).TotalMinutes) < 1;
+
+        var incomingPercent = Math.Clamp(contextUsage.Value.Percent, 0, 100);
+        if (!sameResetWindow || incomingPercent >= account.context_usage_percent)
+        {
+            account.context_usage_percent = incomingPercent;
+            account.context_composer_name = contextUsage.Value.ComposerName;
+        }
+
+        if (account.context_usage_percent >= 99.5)
+        {
+            account.context_bottom_hit = true;
+        }
+    }
+
+    private static string? ExtractCursorUserId(string sessionToken)
+    {
+        if (string.IsNullOrWhiteSpace(sessionToken))
+            return null;
+        var sep = sessionToken.IndexOf("%3A%3A", StringComparison.OrdinalIgnoreCase);
+        if (sep <= 0)
+            return null;
+        return sessionToken[..sep];
+    }
+
     // Normalize API windows: session (300min/5h) should be primary, weekly (10080min/7d) should be secondary
     // The API may return them swapped depending on plan type (free vs plus)
     private static (CodexApiService.WindowSnapshot? session, CodexApiService.WindowSnapshot? weekly) NormalizeWindows(
@@ -1594,6 +1913,14 @@ public partial class MainPage : ContentPage
             NotifyStatsChanged();
             IsBusy = false;
         }
+        else if (e.Parameter is CursorAccount cursorAccount)
+        {
+            IsBusy = true;
+            await EnqueueRefreshAsync(cursorAccount, RefreshQueueLevel.Immediate);
+            _ = _cursorAccountManager.SaveAccountsAsync();
+            NotifyStatsChanged();
+            IsBusy = false;
+        }
         else if (e.Parameter is CodexAccount codexAccount)
         {
             IsBusy = true;
@@ -1628,10 +1955,16 @@ public partial class MainPage : ContentPage
     {
         try
         {
-            var fileName = CurrentTab == "Google" ? "AIUsageMonitor_accounts.json" : "AIUsageMonitor_codex_accounts.json";
+            var fileName = CurrentTab == "Google"
+                ? "AIUsageMonitor_accounts.json"
+                : CurrentTab == "Cursor"
+                ? "AIUsageMonitor_cursor_accounts.json"
+                : "AIUsageMonitor_codex_accounts.json";
             string json = "";
             if (CurrentTab == "Google")
                 json = JsonSerializer.Serialize(Accounts.ToList());
+            else if (CurrentTab == "Cursor")
+                json = JsonSerializer.Serialize(CursorAccounts.ToList());
             else
                 json = JsonSerializer.Serialize(CodexAccounts.ToList());
 
@@ -1669,6 +2002,19 @@ public partial class MainPage : ContentPage
                     await _accountManager.ImportAccountsAsync(result.FullPath);
                     UpdateDisplayIndices();
                     RebuildGoogleAccountRows();
+                    NotifyStatsChanged();
+                }
+                else if (CurrentTab == "Cursor")
+                {
+                    var json = await File.ReadAllTextAsync(result.FullPath);
+                    var list = JsonSerializer.Deserialize<List<CursorAccount>>(json);
+                    if (list != null)
+                    {
+                        foreach (var acc in list)
+                        {
+                            _cursorAccountManager.AddOrUpdateAccount(acc);
+                        }
+                    }
                     NotifyStatsChanged();
                 }
                 else
@@ -1729,6 +2075,40 @@ public partial class MainPage : ContentPage
         {
             _codexAccountManager.RemoveAccount(id);
         }
+    }
+
+    private void OnDeleteCursorAccountClicked(object? sender, EventArgs e)
+    {
+        if (sender is Button btn && btn.CommandParameter is string id)
+        {
+            _cursorAccountManager.RemoveAccount(id);
+            NotifyStatsChanged();
+        }
+    }
+
+    private async void OnRenameCursorAccountClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button btn || btn.CommandParameter is not string id)
+            return;
+
+        var account = CursorAccounts.FirstOrDefault(a => a.id == id);
+        if (account is null)
+            return;
+
+        var newName = await DisplayPromptAsync(
+            "Cursor Account",
+            "카드에 표시할 이름을 입력하세요.",
+            "Save",
+            "Cancel",
+            account.DisplayName,
+            maxLength: 80);
+
+        if (string.IsNullOrWhiteSpace(newName))
+            return;
+
+        account.name = newName.Trim();
+        _cursorAccountManager.AddOrUpdateAccount(account);
+        NotifyStatsChanged();
     }
 
     private async void OnOpenCodexSiteClicked(object? sender, EventArgs e)

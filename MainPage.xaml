@@ -178,6 +178,15 @@
                             <BoxView HeightRequest="2" WidthRequest="20" BackgroundColor="{StaticResource Emerald500}" IsVisible="{Binding IsCodexTab}" HorizontalOptions="Center" Margin="0,5,0,0" />
                         </VerticalStackLayout>
                     </Border>
+
+                    <Border Style="{StaticResource TabStyle}" AutomationId="Cursor" Margin="0,10,0,0">
+                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnTabClicked" /></Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="5" HorizontalOptions="Center">
+                            <Label Text="R" FontSize="24" FontAttributes="Bold" TextColor="{Binding IsCursorTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Emerald500}}" HorizontalOptions="Center" />
+                            <Label Text="Cursor" FontSize="9" FontAttributes="Bold" TextColor="{Binding IsCursorTab, Converter={StaticResource PercentageColorConverter}, ConverterParameter={StaticResource Slate50}}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="2" WidthRequest="20" BackgroundColor="{StaticResource Emerald500}" IsVisible="{Binding IsCursorTab}" HorizontalOptions="Center" Margin="0,5,0,0" />
+                        </VerticalStackLayout>
+                    </Border>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout Grid.Row="1" Spacing="0" VerticalOptions="End" Margin="0,0,0,10">
@@ -230,7 +239,7 @@
 
                         <Button Text="Export" Clicked="OnExportClicked" Style="{StaticResource UtilityButtonStyle}" />
                         <Button Text="Import" Clicked="OnImportClicked" Style="{StaticResource UtilityButtonStyle}" />
-                        <Button Text="+ Add Account" Clicked="OnLoginClicked" BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" CornerRadius="6" HeightRequest="34" Padding="18,0" FontSize="12" />
+                        <Button Text="{Binding AddAccountButtonText}" IsEnabled="{Binding CanAddAccount}" Clicked="OnLoginClicked" BackgroundColor="{StaticResource Emerald500}" TextColor="{StaticResource Slate100}" CornerRadius="6" HeightRequest="34" Padding="18,0" FontSize="12" />
 
                         <Grid WidthRequest="36" HeightRequest="50">
                             <Border Style="{StaticResource IconButtonStyle}" WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 18">
@@ -393,6 +402,85 @@
                             </HorizontalStackLayout>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </ScrollView>
+
+            <!-- TAB CONTENT: CURSOR -->
+            <ScrollView Grid.Row="2" Padding="20" IsVisible="{Binding IsCursorTab}">
+                <VerticalStackLayout Spacing="10">
+                    <Border IsVisible="{Binding IsCursorDbMissing}" BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="16">
+                        <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                            <Label Text="Cursor가 감지되지 않았습니다." FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                            <Label Text="{Binding CursorDbStatusMessage}" FontSize="12" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                            <Label Text="Cursor 설치가 필요하면 아래 버튼을 눌러 홈페이지로 이동하세요." FontSize="11" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                            <Button Text="Cursor 홈페이지 열기" Clicked="OnOpenCursorHomeClicked" Style="{StaticResource UtilityButtonStyle}" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Label IsVisible="{Binding IsCursorDbAvailable}" Text="{Binding CursorDbStatusMessage}" FontSize="11" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                    <FlexLayout BindableLayout.ItemsSource="{Binding CursorAccounts}" Wrap="Wrap" JustifyContent="Start" AlignItems="Start" AlignContent="Start">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="models:CursorAccount">
+                                <Border Margin="0,0,5,5" Padding="0" WidthRequest="240" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                                    <Border.Shadow><Shadow Brush="Black" Offset="0,6" Radius="15" Opacity="0.5" /></Border.Shadow>
+                                    <Grid RowDefinitions="Auto,*,Auto">
+                                        <VerticalStackLayout>
+                                            <Grid ColumnDefinitions="30,*,Auto" Padding="14,12">
+                                                <Border HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" BackgroundColor="{StaticResource Slate700}">
+                                                    <Label Text="R" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" />
+                                                </Border>
+                                                <VerticalStackLayout Grid.Column="1" Margin="10,0,0,0" VerticalOptions="Center">
+                                                    <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="12" TextColor="{StaticResource Slate50}" LineBreakMode="TailTruncation" />
+                                                </VerticalStackLayout>
+                                                <HorizontalStackLayout Grid.Column="2" Spacing="5" VerticalOptions="Center">
+                                                    <Label Text="⏳ Waiting" TextColor="{StaticResource Slate400}" FontSize="10" FontAttributes="Bold" IsVisible="{Binding IsRefreshQueued}" VerticalOptions="Center" />
+                                                    <ActivityIndicator IsRunning="True" IsVisible="{Binding IsRefreshing}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
+                                                    <Label Text="!" TextColor="{StaticResource Rose500}" FontSize="14" IsVisible="{Binding HasError}" VerticalOptions="Center" />
+                                                </HorizontalStackLayout>
+                                            </Grid>
+
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Padding="14,0" BackgroundColor="{StaticResource Slate900}">
+                                                <HorizontalStackLayout Grid.Column="0" Spacing="0" VerticalOptions="Center">
+                                                    <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4">
+                                                        <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshAccountClicked" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                        <Label Text="R" TextColor="{StaticResource Slate400}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                    </Border>
+                                                </HorizontalStackLayout>
+                                                <Label Grid.Column="2" Text="{Binding ContextRemainingDisplay}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                            </Grid>
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="5">
+                                            <Label Text="{Binding ContextTitle}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" LineBreakMode="TailTruncation" />
+                                            <Border Padding="0" StrokeThickness="0" BackgroundColor="Transparent" HeightRequest="26">
+                                                <Grid BackgroundColor="{StaticResource Slate700}" VerticalOptions="Center">
+                                                    <ProgressBar ScaleY="6" Progress="{Binding ContextUsageProgress}" ProgressColor="{StaticResource Sky400}" BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                        <Label Text="Composer context" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                        <Label Grid.Column="1" Text="{Binding ContextUsageDisplay}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                                    </Grid>
+                                                </Grid>
+                                            </Border>
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                <Label Text="{Binding ContextStatusDisplay}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                                <Label Grid.Column="1" Text="{Binding ContextResetDisplay}" FontSize="8" TextColor="{StaticResource Slate500}" />
+                                            </Grid>
+                                        </VerticalStackLayout>
+
+                                        <Grid Grid.Row="2" ColumnDefinitions="*,*" HeightRequest="30">
+                                            <Button Grid.Column="0" Text="RENAME" Clicked="OnRenameCursorAccountClicked" CommandParameter="{Binding id}"
+                                                    BackgroundColor="Transparent" TextColor="{StaticResource Slate400}"
+                                                    FontSize="9" CharacterSpacing="1.2" HorizontalOptions="Fill" HeightRequest="30" Padding="0"
+                                                    CornerRadius="0" BorderWidth="0" VerticalOptions="End" />
+                                            <Button Grid.Column="1" Text="REMOVE" Clicked="OnDeleteCursorAccountClicked" CommandParameter="{Binding id}"
+                                                    Style="{StaticResource RemoveButtonStyle}"
+                                                    FontSize="9" CharacterSpacing="1.2" HorizontalOptions="Fill" HeightRequest="30" Padding="0"
+                                                    CornerRadius="0" BorderWidth="0" VerticalOptions="End" />
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </FlexLayout>
                 </VerticalStackLayout>
             </ScrollView>
 
@@ -589,6 +677,16 @@
                                 <Switch Grid.Column="1" IsToggled="{Binding RememberCloseChoice}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
                             </Grid>
                         </Border>
+
+                        <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 10" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <VerticalStackLayout VerticalOptions="Center" Spacing="4">
+                                    <Label Text="Cursor Storage Folder" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                    <Label Text="{Binding CursorStoragePath}" FontSize="11" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1" Text="Open Folder" Clicked="OnOpenCursorStorageFolderClicked" Style="{StaticResource UtilityButtonStyle}" VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
                     </VerticalStackLayout>
 
                     <BoxView HeightRequest="40" Opacity="0" />
@@ -724,6 +822,15 @@
                     <Button Text="Cancel Login" Clicked="OnCancelLoginClicked" 
                             BackgroundColor="{StaticResource Slate700}" TextColor="{StaticResource Slate100}" 
                             CornerRadius="8" HeightRequest="40" Padding="32,0" FontSize="13" FontAttributes="Bold" Margin="0,8,0,0" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- CURSOR ID/PW LOGIN WAITING OVERLAY -->
+            <Grid Grid.RowSpan="3" BackgroundColor="#CC0f172a" IsVisible="{Binding IsCursorCredentialLoginWaiting}">
+                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="16">
+                    <ActivityIndicator IsRunning="{Binding IsCursorCredentialLoginWaiting}" Color="{StaticResource Emerald500}" WidthRequest="50" HeightRequest="50" />
+                    <Label Text="Cursor 로그인 처리 중..." TextColor="{StaticResource Slate100}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                    <Label Text="계정 추가를 위해 사용량 정보를 확인하고 있습니다." TextColor="{StaticResource Slate400}" FontSize="12" HorizontalOptions="Center" />
                 </VerticalStackLayout>
             </Grid>
 
