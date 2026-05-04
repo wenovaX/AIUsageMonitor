@@ -51,18 +51,18 @@ public class CodexAccountManagerService
                     // Migration logic
                     var (secureAccess, secureRefresh, _) = await _tokenStorage.LoadTokensAsync(acc.id);
                     
-                    System.Diagnostics.Debug.WriteLine($"[Migration:Codex] Acc: {acc.email ?? acc.name} | JSON(acc:{!string.IsNullOrEmpty(oldAccess)}, ref:{!string.IsNullOrEmpty(oldRefresh)}) | Secure(acc:{!string.IsNullOrEmpty(secureAccess)}, ref:{!string.IsNullOrEmpty(secureRefresh)})");
+                    Log.Info($"Migration: Acc: {acc.email ?? acc.name} | JSON(acc:{!string.IsNullOrEmpty(oldAccess)}, ref:{!string.IsNullOrEmpty(oldRefresh)}) | Secure(acc:{!string.IsNullOrEmpty(secureAccess)}, ref:{!string.IsNullOrEmpty(secureRefresh)})");
 
                     if (string.IsNullOrEmpty(secureAccess) && (!string.IsNullOrEmpty(oldAccess) || !string.IsNullOrEmpty(oldRefresh)))
                     {
-                        System.Diagnostics.Debug.WriteLine($"[Migration:Codex] -> MIGRATING old tokens to SecureStorage for {acc.email ?? acc.name}");
+                        Log.Info($"Migration: -> MIGRATING old tokens to SecureStorage for {acc.email ?? acc.name}");
                         await _tokenStorage.SaveTokensAsync(acc.id, oldAccess ?? "", oldRefresh ?? "");
                         acc.access_token = oldAccess ?? "";
                         acc.refresh_token = oldRefresh ?? "";
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine($"[Migration:Codex] -> KEEPING SecureStorage tokens for {acc.email ?? acc.name}");
+                        Log.Info($"Migration: -> KEEPING SecureStorage tokens for {acc.email ?? acc.name}");
                         acc.access_token = secureAccess ?? "";
                         acc.refresh_token = secureRefresh ?? "";
                     }
@@ -72,7 +72,7 @@ public class CodexAccountManagerService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to load codex accounts: {ex.Message}");
+            Log.Error("Failed to load codex accounts", ex);
         }
     }
 
@@ -102,7 +102,7 @@ public class CodexAccountManagerService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to save codex accounts: {ex.Message}");
+            Log.Error("Failed to save codex accounts", ex);
         }
         finally
         {
@@ -166,7 +166,7 @@ public class CodexAccountManagerService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to export codex accounts: {ex.Message}");
+            Log.Error("Failed to export codex accounts", ex);
             throw;
         }
     }
@@ -203,7 +203,7 @@ public class CodexAccountManagerService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to import codex accounts: {ex.Message}");
+            Log.Error("Failed to import codex accounts", ex);
             throw;
         }
     }

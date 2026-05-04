@@ -54,10 +54,10 @@ public class GoogleRadarService
         if (aiModels.Count > 0 && !hasAnyValidAiData && account.quotas.Count > 0)
         {
             var dumpErr = string.Join(", ", quota.models.Values.Select(m => $"{m.display_name}:{m.percentage}%|{m.resetTime}"));
-            Debug.WriteLine($"[Antigravity][InvalidData] {account.email} -> {dumpErr}");
+            Log.Error($"InvalidData: {account.email} -> {dumpErr}");
             
             // --- RAW JSON DUMP FOR DEBUGGING GOOGLE API ---
-            Debug.WriteLine($"[Antigravity][RawJsonDump] {account.email} -> {quota.RawJsonDump}");
+            Log.Info($"RawJsonDump: {account.email} -> {quota.RawJsonDump}");
             
             throw new Exception("Received suspiciously invalid or zeroed quota data (ignored).");
         }
@@ -73,7 +73,7 @@ public class GoogleRadarService
             _isFirstSuccessfulQuotaLoad = false;
             var modelNames = string.Join(", ", discoveredModels);
 
-            Debug.WriteLine($"[Antigravity][FirstSuccess] {account.email}: {modelNames}");
+            Log.Info($"FirstSuccess: {account.email}: {modelNames}");
         }
 
         MainThread.BeginInvokeOnMainThread(() =>
@@ -85,7 +85,7 @@ public class GoogleRadarService
 
         stopwatch.Stop();
         var dumpSuccess = string.Join(", ", quota.models.Values.Select(m => $"{m.display_name}({m.percentage}%|{m.resetTime})"));
-        Debug.WriteLine($"[Antigravity][RefreshCompleted] {account.email}: models={quota.models.Count}, elapsedMs={stopwatch.ElapsedMilliseconds}");
-        Debug.WriteLine($"[QuotaDump] {account.email} -> {dumpSuccess}");
+        Log.Info($"RefreshCompleted: {account.email}: models={quota.models.Count}, elapsedMs={stopwatch.ElapsedMilliseconds}");
+        Log.Info($"QuotaDump: {account.email} -> {dumpSuccess}");
     }
 }

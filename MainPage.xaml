@@ -880,7 +880,6 @@
                 <WebView x:Name="CodexLoginWebView" Grid.Row="1" Navigated="OnCodexLoginWebViewNavigated" />
             </Grid>
 
-            <ProgressBar Grid.RowSpan="3" IsVisible="{Binding IsBusy}" Progress="0.5" VerticalOptions="Start" HeightRequest="2" ProgressColor="{StaticResource Emerald500}" BackgroundColor="Transparent" />
         </Grid>
     </Grid>
 </ContentPage>

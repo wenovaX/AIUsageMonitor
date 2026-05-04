@@ -15,14 +15,14 @@ public class OAuthService
         using var listener = new HttpListener();
         try 
         {
-            Debug.WriteLine($"[OAuth] Starting listener on {_redirectUri}/");
+            Log.Info($"Starting listener on {_redirectUri}/");
             listener.Prefixes.Add(_redirectUri + "/");
             listener.Start();
-            Debug.WriteLine("[OAuth] Listener started successfully.");
+            Log.Info("Listener started successfully.");
         }
         catch (HttpListenerException ex)
         {
-            Debug.WriteLine($"[OAuth] Listener Error: {ex.Message} (Error Code: {ex.ErrorCode})");
+            Log.Error("Listener Error", ex);
             if (ex.ErrorCode == 5) // Access Denied
             {
                 throw new Exception("Access Denied: Please run as Admin or add URL ACL for the port.");
@@ -37,11 +37,11 @@ public class OAuthService
         try
         {
             // Open browser
-            Debug.WriteLine($"[OAuth] Opening browser: {authUrl}");
+            Log.Info($"Opening browser: {authUrl}");
             await Browser.Default.OpenAsync(authUrl, BrowserLaunchMode.External);
 
             // Wait for request with cancellation support
-            Debug.WriteLine("[OAuth] Waiting for callback...");
+            Log.Info("Waiting for callback...");
             var contextTask = listener.GetContextAsync();
             var cancelTask = Task.Delay(Timeout.Infinite, cancellationToken);
             var completedTask = await Task.WhenAny(contextTask, cancelTask);
@@ -55,7 +55,7 @@ public class OAuthService
             var context = await contextTask;
             var request = context.Request;
             
-            Debug.WriteLine($"[OAuth] Request received: {request.Url}");
+            Log.Info($"Request received: {request.Url}");
             var code = request.QueryString["code"];
             var error = request.QueryString["error"];
 
@@ -72,7 +72,7 @@ public class OAuthService
             }
 
             listener.Stop();
-            Debug.WriteLine("[OAuth] Listener stopped.");
+            Log.Info("Listener stopped.");
 
             if (!string.IsNullOrEmpty(error))
                 throw new Exception($"OAuth error: {error}");
@@ -81,13 +81,13 @@ public class OAuthService
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("[OAuth] Login cancelled by user.");
+            Log.Info("Login cancelled by user.");
             if (listener.IsListening) listener.Stop();
             throw;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[OAuth] Runtime Error: {ex.Message}");
+            Log.Error("Runtime Error", ex);
             if (listener.IsListening) listener.Stop();
             throw;
         }

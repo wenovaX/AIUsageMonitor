@@ -205,7 +205,7 @@ public class ModelCatalogService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ModelCatalog] Load error: {ex.Message}");
+            Log.Error("Load error", ex);
         }
 
         ApplyModels(DefaultDisplayOrder.Select(name => new DiscoveredModelEntry
@@ -237,7 +237,7 @@ public class ModelCatalogService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ModelCatalog] Save error: {ex.Message}");
+            Log.Error("Save error", ex);
         }
     }
 

@@ -12,11 +12,11 @@ public class CursorDbTokenService
         try
         {
             SQLitePCL.Batteries_V2.Init();
-            Trace.WriteLine("[CursorDB] SQLitePCL batteries initialized.");
+            Log.Info("SQLitePCL batteries initialized.");
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[CursorDB] SQLite init warning: {ex.Message}");
+            Log.Info($"SQLite init warning: {ex.Message}");
         }
     }
 
@@ -29,7 +29,7 @@ public class CursorDbTokenService
     public string? FindCursorDbPath()
     {
         var found = CandidateDbPaths.FirstOrDefault(File.Exists);
-        Trace.WriteLine($"[CursorDB] FindCursorDbPath => {(found ?? "NOT_FOUND")}");
+        Log.Info($"FindCursorDbPath => {(found ?? "NOT_FOUND")}");
         return found;
     }
 
@@ -38,39 +38,39 @@ public class CursorDbTokenService
         var dbPath = FindCursorDbPath();
         if (string.IsNullOrWhiteSpace(dbPath))
         {
-            Trace.WriteLine("[CursorDB] DB path not found.");
+            Log.Info("DB path not found.");
             return (false, null, null, "Cursor DB not found.", null);
         }
 
         try
         {
-            Trace.WriteLine($"[CursorDB] Opening DB: {dbPath}");
+            Log.Info($"Opening DB: {dbPath}");
             await using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly;");
             await conn.OpenAsync();
 
             var accessToken = await TryReadAccessTokenAsync(conn);
             if (string.IsNullOrWhiteSpace(accessToken))
             {
-                Trace.WriteLine("[CursorDB] cursorAuth/accessToken missing.");
+                Log.Info("cursorAuth/accessToken missing.");
                 return (false, null, null, "No cursorAuth/accessToken in DB.", dbPath);
             }
 
             var userId = TryExtractUserId(accessToken);
             if (string.IsNullOrWhiteSpace(userId))
             {
-                Trace.WriteLine("[CursorDB] userId extraction failed.");
+                Log.Info("userId extraction failed.");
                 return (false, null, null, "Failed to decode Cursor access token.", dbPath);
             }
 
             var sessionToken = $"{userId}%3A%3A{accessToken}";
             var email = TryExtractEmail(accessToken);
-            Trace.WriteLine($"[CursorDB] Session extracted. userId={userId}, email={(email ?? "N/A")}, tokenLen={sessionToken.Length}");
+            Log.Info($"Session extracted. userId={userId}, email={(email ?? "N/A")}, tokenLen={sessionToken.Length}");
             await DumpContextCandidatesForCurrentInstallationAsync();
             return (true, sessionToken, email, "OK", dbPath);
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[CursorDB] Exception: {ex.Message}");
+            Log.Error("Exception during session extraction", ex);
             return (false, null, null, ex.Message, dbPath);
         }
     }
@@ -80,7 +80,7 @@ public class CursorDbTokenService
         var dbPath = FindCursorDbPath();
         if (string.IsNullOrWhiteSpace(dbPath))
         {
-            Trace.WriteLine("[CursorDB] Context candidate dump skipped: DB path not found.");
+            Log.Info("Context candidate dump skipped: DB path not found.");
             return;
         }
 
@@ -103,7 +103,7 @@ public class CursorDbTokenService
             var raw = (await cmd.ExecuteScalarAsync())?.ToString();
             if (string.IsNullOrWhiteSpace(raw))
             {
-                Trace.WriteLine("[CursorDB] composer.composerHeaders missing.");
+                Log.Info("composer.composerHeaders missing.");
                 return null;
             }
 
@@ -147,12 +147,12 @@ public class CursorDbTokenService
             if (bestPercent < 0)
                 return null;
 
-            Trace.WriteLine($"[CursorDB] Context usage selected: percent={bestPercent:F1}, composer={bestName}, ts={bestTimestamp}");
+            Log.Info($"Context usage selected: percent={bestPercent:F1}, composer={bestName}, ts={bestTimestamp}");
             return (bestPercent, bestName);
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[CursorDB] Context usage read failed: {ex.Message}");
+            Log.Error("Context usage read failed", ex);
             return null;
         }
     }
@@ -161,14 +161,14 @@ public class CursorDbTokenService
     {
         try
         {
-            Trace.WriteLine("[CursorDB] Context candidate dump start.");
+            Log.Info("Context candidate dump start.");
             await DumpMatchingKeysAsync(globalDbPath, "globalStorage");
 
             var cursorUserDir = Directory.GetParent(Directory.GetParent(globalDbPath)!.FullName)!.FullName;
             var workspaceRoot = Path.Combine(cursorUserDir, "workspaceStorage");
             if (!Directory.Exists(workspaceRoot))
             {
-                Trace.WriteLine($"[CursorDB] workspaceStorage not found: {workspaceRoot}");
+                Log.Info($"workspaceStorage not found: {workspaceRoot}");
                 return;
             }
 
@@ -177,11 +177,11 @@ public class CursorDbTokenService
                 await DumpMatchingKeysAsync(workspaceDb, $"workspace:{Path.GetFileName(Path.GetDirectoryName(workspaceDb))}");
             }
 
-            Trace.WriteLine("[CursorDB] Context candidate dump end.");
+            Log.Info("Context candidate dump end.");
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[CursorDB] Context candidate dump failed: {ex.Message}");
+            Log.Error("Context candidate dump failed", ex);
         }
     }
 
@@ -211,10 +211,10 @@ LIMIT 80;";
                 count++;
                 var key = reader.IsDBNull(0) ? "" : reader.GetString(0);
                 var value = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                Trace.WriteLine($"[CursorDB][{label}] candidate key={key}, value={Truncate(value, 1200)}");
+                Log.Info($"[{label}] candidate key={key}, value={Truncate(value, 1200)}");
             }
 
-            Trace.WriteLine($"[CursorDB][{label}] candidate count={count}");
+            Log.Info($"[{label}] candidate count={count}");
         }
         catch (Exception ex)
         {

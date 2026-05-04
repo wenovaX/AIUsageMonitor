@@ -129,7 +129,7 @@ public class GoogleApiService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[API] Project Context Error: {ex.Message}");
+            Log.Error("Project Context Error", ex);
             return (null, null);
         }
     }
@@ -157,7 +157,7 @@ public class GoogleApiService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[API] Credits Error: {ex.Message}");
+            Log.Error("Credits Error", ex);
             return 0;
         }
     }
@@ -230,11 +230,11 @@ public class GoogleApiService
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[API] Error with endpoint {endpoint}: {ex.Message}");
+                Log.Error($"Error with endpoint {endpoint}", ex);
             }
         }
 
-        Debug.WriteLine($"[GoogleQuota] Successful endpoints={successfulEndpointCount}, models={result.models.Count}");
+        Log.Info($"GoogleQuota: Successful endpoints={successfulEndpointCount}, models={result.models.Count}");
         
         var sorted = new QuotaData();
         foreach (var kv in result.models.OrderBy(kv => kv.Value.display_name, StringComparer.OrdinalIgnoreCase))

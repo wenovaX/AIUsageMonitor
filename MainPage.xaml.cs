@@ -1320,7 +1320,7 @@ public partial class MainPage : ContentPage
             }
             catch (Exception ex) when (ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
             {
-                Debug.WriteLine("[CodexWebView] Access token likely expired, attempting refresh...");
+                Log.Info("Access token likely expired, attempting refresh...");
                 var (_, savedRefresh, _) = await _tokenStorage.LoadTokensAsync(codexAccount.id);
                 if (!string.IsNullOrEmpty(savedRefresh))
                 {
@@ -1332,7 +1332,7 @@ public partial class MainPage : ContentPage
                 }
                 else
                 {
-                    Debug.WriteLine("[CodexWebView] No refresh token available, prompting re-login.");
+                    Log.Info("No refresh token available, prompting re-login.");
                     await DisplayAlertAsync("Session Expired", "Please log in again.", "OK");
                     StartCodexWebViewLogin(clearSession: true);
                     return;
@@ -1346,7 +1346,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             _isProcessingCodexLogin = false;
-            Debug.WriteLine($"Codex Token Process Error: {ex.Message}");
+            Log.Error("Codex Token Process Error", ex);
             await DisplayAlertAsync("Login Failed", $"Failed to process Codex token:\n{ex.Message}", "OK");
         }
     }
@@ -1567,7 +1567,7 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Refresh error: {ex.Message}");
+            Log.Error("Refresh error", ex);
         }
     }
 
@@ -1584,7 +1584,7 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Codex refresh error: {ex.Message}");
+            Log.Error("Codex refresh error", ex);
         }
     }
 
@@ -1601,7 +1601,7 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Cursor refresh error: {ex.Message}");
+            Log.Error("Cursor refresh error", ex);
         }
     }
 
@@ -1628,7 +1628,7 @@ public partial class MainPage : ContentPage
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Retry] Attempt {attempt}/{maxRetries} failed: {ex.Message}");
+                Log.Info($"[Retry] Attempt {attempt}/{maxRetries} failed: {ex.Message}");
                 if (attempt == maxRetries) throw;
                 await Task.Delay(1500); // 1.5-second pause before retry
             }
@@ -1714,19 +1714,20 @@ public partial class MainPage : ContentPage
                     }
 
                     account.last_updated = DateTime.Now;
+                    Log.Info($"Update Completed: {account.name} | Plan: {account.plan_type} | Usage: {account.primaryUsedPercent}% ({account.primaryWindowLabel})");
                 });
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Codex update error for {account.name}: {ex.Message}");
+            Log.Error($"Codex update error for {account.name}", ex);
             throw;
         }
     }
 
     private async Task UpdateCursorAccountData(CursorAccount account)
     {
-        Trace.WriteLine($"[Cursor] Update start. name={account.name}, email={account.email}, hasSession={!string.IsNullOrWhiteSpace(account.session_token)}, hasLoginId={!string.IsNullOrWhiteSpace(account.login_email)}");
+        Log.Info($"[Cursor] Update start. name={account.name}, email={account.email}, hasSession={!string.IsNullOrWhiteSpace(account.session_token)}, hasLoginId={!string.IsNullOrWhiteSpace(account.login_email)}");
         (string? Email, int Used, int Limit, DateTime? ResetDate) result;
         (double Percent, string ComposerName)? contextUsage = null;
 
@@ -1748,7 +1749,7 @@ public partial class MainPage : ContentPage
             result = await _cursorApi.FetchMonthlyUsageAsync(account.session_token);
         }
 
-        Trace.WriteLine($"[Cursor] Update fetched. apiEmail={(result.Email ?? "N/A")}, used={result.Used}, limit={result.Limit}");
+        Log.Info($"[Cursor] Update fetched. apiEmail={(result.Email ?? "N/A")}, used={result.Used}, limit={result.Limit}");
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -1862,6 +1863,7 @@ public partial class MainPage : ContentPage
     {
         if (e.Parameter is CodexAccount account)
         {
+            Log.Info($"Refresh Clicked: {account.name} ({account.email})");
             IsBusy = true;
             await EnqueueRefreshAsync(account, RefreshQueueLevel.Immediate);
             _ = _codexAccountManager.SaveAccountsAsync();

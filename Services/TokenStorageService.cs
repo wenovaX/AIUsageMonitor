@@ -50,7 +50,7 @@ public class TokenStorageService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[SecureStorage] Failed to save tokens for {accountId}: {ex.Message}");
+            Log.Error("Failed to save tokens", ex);
         }
     }
 
@@ -69,7 +69,7 @@ public class TokenStorageService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[SecureStorage] Failed to load tokens for {accountId}: {ex.Message}");
+            Log.Error("Failed to load tokens", ex);
             return (null, null, null);
         }
     }
@@ -83,7 +83,7 @@ public class TokenStorageService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[SecureStorage] Failed to remove tokens for {accountId}: {ex.Message}");
+            Log.Error("Failed to remove tokens", ex);
         }
     }
 }

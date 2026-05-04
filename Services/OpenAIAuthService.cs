@@ -66,13 +66,13 @@ public class OpenAIAuthService
 		using var listener = new HttpListener();
 		try
 		{
-			Debug.WriteLine($"[OpenAI OAuth] Starting listener on {_redirectUri}/");
+			Log.Info($"Starting listener on {_redirectUri}/");
 			listener.Prefixes.Add(_redirectUri + "/");
 			listener.Start();
 		}
 		catch (HttpListenerException ex)
 		{
-			Debug.WriteLine($"[OpenAI OAuth] Listener Error: {ex.Message}");
+			Log.Error("Listener Error", ex);
 			if (ex.ErrorCode == 5)
 				throw new Exception("Access Denied: Please run as Admin or add URL ACL for the port.");
 			else if (ex.ErrorCode == 183)
@@ -82,10 +82,10 @@ public class OpenAIAuthService
 
 		try
 		{
-			Debug.WriteLine($"[OpenAI OAuth] Opening browser: {authUrl}");
+			Log.Info($"Opening browser: {authUrl}");
 			await Browser.Default.OpenAsync(authUrl, BrowserLaunchMode.External);
 
-			Debug.WriteLine("[OpenAI OAuth] Waiting for callback...");
+			Log.Info("Waiting for callback...");
 			var contextTask = listener.GetContextAsync();
 			var cancelTask = Task.Delay(Timeout.Infinite, cancellationToken);
 			var completedTask = await Task.WhenAny(contextTask, cancelTask);
@@ -99,7 +99,7 @@ public class OpenAIAuthService
 			var context = await contextTask;
 			var request = context.Request;
 
-			Debug.WriteLine($"[OpenAI OAuth] Request received: {request.Url}");
+			Log.Info($"Request received: {request.Url}");
 			var code = request.QueryString["code"];
 			var error = request.QueryString["error"];
 			var returnedState = request.QueryString["state"];
@@ -132,13 +132,13 @@ public class OpenAIAuthService
 		}
 		catch (OperationCanceledException)
 		{
-			Debug.WriteLine("[OpenAI OAuth] Login cancelled by user.");
+			Log.Info("Login cancelled by user.");
 			if (listener.IsListening) listener.Stop();
 			throw;
 		}
 		catch (Exception ex)
 		{
-			Debug.WriteLine($"[OpenAI OAuth] Runtime Error: {ex.Message}");
+			Log.Error("Runtime Error", ex);
 			if (listener.IsListening) listener.Stop();
 			throw;
 		}
@@ -163,7 +163,7 @@ public class OpenAIAuthService
 		var response = await _httpClient.SendAsync(request);
 		var json = await response.Content.ReadAsStringAsync();
 
-		Debug.WriteLine($"[OpenAI OAuth] Token response status: {response.StatusCode}");
+		Log.Info($"Token response status: {response.StatusCode}");
 
 		if (!response.IsSuccessStatusCode)
 			throw new Exception($"Token exchange failed ({response.StatusCode}): {json}");

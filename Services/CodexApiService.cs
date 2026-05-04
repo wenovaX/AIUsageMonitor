@@ -96,20 +96,32 @@ public class CodexApiService
 		if (!string.IsNullOrEmpty(accountId))
 			request.Headers.Add("ChatGPT-Account-Id", accountId);
 
-		var response = await _httpClient.SendAsync(request);
-		var json = await response.Content.ReadAsStringAsync();
+		try
+		{
+			Log.Info("Fetching usage data from OpenAI...");
+			var response = await _httpClient.SendAsync(request);
+			var json = await response.Content.ReadAsStringAsync();
 
-		System.Diagnostics.Debug.WriteLine($"[CodexAPI] Usage status: {response.StatusCode}");
+			Log.Info($"Usage response received. Status: {response.StatusCode} (Length: {json.Length})");
 
-		if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
-			response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-			throw new Exception("Token expired or unauthorized. Please re-login.");
+			if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+				response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+				throw new Exception("Token expired or unauthorized. Please re-login.");
 
-		if (!response.IsSuccessStatusCode)
-			throw new Exception($"Usage API error ({response.StatusCode}): {json}");
+			if (!response.IsSuccessStatusCode)
+				throw new Exception($"Usage API error ({response.StatusCode}): {json}");
 
-        System.Diagnostics.Debug.WriteLine($"[CodexAPI RAW JSON] {json}");
-		return JsonSerializer.Deserialize<CodexUsageResponse>(json);
+            // JSON이 너무 길면 잘라서라도 출력
+            string logJson = json.Length > 1000 ? json.Substring(0, 1000) + "...[TRUNCATED]" : json;
+			Log.Info($"[RAW JSON] {logJson}");
+            
+			return JsonSerializer.Deserialize<CodexUsageResponse>(json);
+		}
+		catch (Exception ex)
+		{
+			Log.Error("Network request failed in FetchUsageAsync", ex);
+			throw;
+		}
 	}
 
 	public async Task<UserInfoResponse?> FetchUserInfoAsync(string accessToken)
@@ -122,7 +134,7 @@ public class CodexApiService
 		var response = await _httpClient.SendAsync(request);
 		var json = await response.Content.ReadAsStringAsync();
 
-		System.Diagnostics.Debug.WriteLine($"[CodexAPI] UserInfo status: {response.StatusCode}");
+		Log.Info($"UserInfo status: {response.StatusCode}");
 
 		if (!response.IsSuccessStatusCode)
 			return null; // Non-critical: we just won't show user info
@@ -194,7 +206,7 @@ public class CodexApiService
 		}
 		catch (Exception ex)
 		{
-			System.Diagnostics.Debug.WriteLine($"[CodexAPI] Failed to parse id_token: {ex.Message}");
+			Log.Error("Failed to parse id_token", ex);
 			return null;
 		}
 	}
