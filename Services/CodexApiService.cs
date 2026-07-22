@@ -1,0 +1,258 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace AIUsageMonitor.Services;
+
+public class CodexApiService
+{
+	private const string UsageEndpoint = "https://chatgpt.com/backend-api/wham/usage";
+	private const string UserInfoEndpoint = "https://chatgpt.com/backend-api/me";
+	private const string RawUsageLogEnvironmentVariable = "AIUSAGEMONITOR_CODEX_RAW_LOG";
+	private readonly HttpClient _httpClient = new();
+
+	private static bool IsRawUsageLoggingEnabled =>
+		string.Equals(
+			Environment.GetEnvironmentVariable(RawUsageLogEnvironmentVariable),
+			"1",
+			StringComparison.OrdinalIgnoreCase);
+
+	public class CodexUsageResponse
+	{
+		[JsonPropertyName("account_id")]
+		public string AccountId { get; set; } = "";
+
+		[JsonPropertyName("plan_type")]
+		public string PlanType { get; set; } = "";
+
+		[JsonPropertyName("rate_limit")]
+		public RateLimitDetails? RateLimit { get; set; }
+
+		[JsonPropertyName("credits")]
+		public CreditDetails? Credits { get; set; }
+
+		[JsonPropertyName("promo")]
+		public PromoDetails? Promo { get; set; }
+	}
+
+	public class PromoDetails
+	{
+		[JsonPropertyName("message")]
+		public string Message { get; set; } = "";
+	}
+
+	public class RateLimitDetails
+	{
+		[JsonPropertyName("primary_window")]
+		public WindowSnapshot? PrimaryWindow { get; set; }
+
+		[JsonPropertyName("secondary_window")]
+		public WindowSnapshot? SecondaryWindow { get; set; }
+	}
+
+	public class WindowSnapshot
+	{
+		[JsonPropertyName("used_percent")]
+		public int UsedPercent { get; set; }
+
+		[JsonPropertyName("reset_at")]
+		public long ResetAt { get; set; }
+
+		[JsonPropertyName("limit_window_seconds")]
+		public int LimitWindowSeconds { get; set; }
+	}
+
+	public class CreditDetails
+	{
+		[JsonPropertyName("has_credits")]
+		public bool HasCredits { get; set; }
+
+		[JsonPropertyName("unlimited")]
+		public bool Unlimited { get; set; }
+
+		[JsonPropertyName("balance")]
+		public JsonElement? Balance { get; set; }
+
+		public double? GetBalance()
+		{
+			if (Balance == null) return null;
+			if (Balance.Value.ValueKind == JsonValueKind.Number)
+				return Balance.Value.GetDouble();
+			if (Balance.Value.ValueKind == JsonValueKind.String &&
+				double.TryParse(Balance.Value.GetString(), out var val))
+				return val;
+			return null;
+		}
+	}
+
+	public class UserInfoResponse
+	{
+		[JsonPropertyName("email")]
+		public string Email { get; set; } = "";
+
+		[JsonPropertyName("name")]
+		public string Name { get; set; } = "";
+
+		[JsonPropertyName("picture")]
+		public string Picture { get; set; } = "";
+	}
+
+	/// <summary>
+	/// Fetches ChatGPT usage statistics from the OpenAI backend API.
+	/// </summary>
+	public async Task<CodexUsageResponse?> FetchUsageAsync(string accessToken, string? accountId = null)
+	{
+		var request = new HttpRequestMessage(HttpMethod.Get, UsageEndpoint);
+		request.Headers.Add("Authorization", $"Bearer {accessToken}");
+		request.Headers.Add("User-Agent", "AIUsageMonitor");
+		request.Headers.Add("Accept", "application/json");
+
+		if (!string.IsNullOrEmpty(accountId))
+			request.Headers.Add("ChatGPT-Account-Id", accountId);
+
+		try
+		{
+			Log.Info("Fetching usage data from OpenAI...");
+			var response = await _httpClient.SendAsync(request);
+			var json = await response.Content.ReadAsStringAsync();
+
+			Log.Info($"Usage response received. Status: {response.StatusCode} (Length: {json.Length})");
+
+			if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+				response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+				throw new Exception("Token expired or unauthorized. Please re-login.");
+
+			if (!response.IsSuccessStatusCode)
+				throw new Exception($"Usage API error ({response.StatusCode}): {json}");
+
+			if (IsRawUsageLoggingEnabled)
+			{
+				Log.Info($"[RAW USAGE JSON]\n{FormatJsonForDiagnostics(json)}");
+			}
+
+			return JsonSerializer.Deserialize<CodexUsageResponse>(json);
+		}
+		catch (Exception ex)
+		{
+			Log.Error("Network request failed in FetchUsageAsync", ex);
+			throw;
+		}
+	}
+
+	private static string FormatJsonForDiagnostics(string json)
+	{
+		try
+		{
+			using var document = JsonDocument.Parse(json);
+			return JsonSerializer.Serialize(
+				document.RootElement,
+				new JsonSerializerOptions { WriteIndented = true });
+		}
+		catch
+		{
+			return json;
+		}
+	}
+
+	/// <summary>
+	/// Fetches ChatGPT user profile information from the OpenAI backend API.
+	/// </summary>
+	public async Task<UserInfoResponse?> FetchUserInfoAsync(string accessToken)
+	{
+		var request = new HttpRequestMessage(HttpMethod.Get, UserInfoEndpoint);
+		request.Headers.Add("Authorization", $"Bearer {accessToken}");
+		request.Headers.Add("User-Agent", "AIUsageMonitor");
+		request.Headers.Add("Accept", "application/json");
+
+		var response = await _httpClient.SendAsync(request);
+		var json = await response.Content.ReadAsStringAsync();
+
+		Log.Info($"UserInfo status: {response.StatusCode}");
+
+		if (!response.IsSuccessStatusCode)
+			return null; // Non-critical: we just won't show user info
+
+		return JsonSerializer.Deserialize<UserInfoResponse>(json);
+	}
+
+	/// <summary>
+	/// Formats the remaining reset time into a human-readable duration string (e.g., "now", "45m", "2h 15m").
+	/// </summary>
+	public static string FormatResetTime(long unixTimestamp)
+	{
+		var resetTime = DateTimeOffset.FromUnixTimeSeconds(unixTimestamp).LocalDateTime;
+		var remaining = resetTime - DateTime.Now;
+
+		if (remaining.TotalMinutes < 1) return "now";
+		if (remaining.TotalHours < 1) return $"{(int)remaining.TotalMinutes}m";
+		if (remaining.TotalHours < 24) return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
+		return $"{(int)remaining.TotalDays}d {remaining.Hours}h";
+	}
+
+	/// <summary>
+	/// Formats a time window duration in seconds into a friendly name (e.g., "Weekly", "3d", "4h").
+	/// </summary>
+	public static string FormatWindowName(int windowSeconds)
+	{
+		var hours = windowSeconds / 3600;
+		if (hours >= 168) return "Weekly";
+		if (hours >= 24) return $"{hours / 24}d";
+		return $"{hours}h";
+	}
+
+	/// <summary>
+	/// Formats the Unix timestamp of reset time into a specific date-time representation (MM/dd HH:mm).
+	/// </summary>
+	public static string FormatResetDate(long unixTimestamp)
+	{
+		if (unixTimestamp == 0) return "—";
+		var resetTime = DateTimeOffset.FromUnixTimeSeconds(unixTimestamp).LocalDateTime;
+		return resetTime.ToString("MM/dd HH:mm");
+	}
+
+	// Parse OpenAI JWT id_token to extract user info (name, email)
+	/// <summary>
+	/// Decodes and parses the payload of a JWT ID token to extract user profile details.
+	/// </summary>
+	public static UserInfoResponse? ParseIdToken(string idToken)
+	{
+		if (string.IsNullOrEmpty(idToken)) return null;
+
+		try
+		{
+			var parts = idToken.Split('.');
+			if (parts.Length < 2) return null;
+
+			// Base64Url decode the payload (2nd segment)
+			var payload = parts[1];
+			payload = payload.Replace('-', '+').Replace('_', '/');
+			switch (payload.Length % 4)
+			{
+				case 2: payload += "=="; break;
+				case 3: payload += "="; break;
+			}
+
+			var bytes = Convert.FromBase64String(payload);
+			var json = System.Text.Encoding.UTF8.GetString(bytes);
+
+			using var doc = JsonDocument.Parse(json);
+			var root = doc.RootElement;
+
+			var result = new UserInfoResponse();
+
+			if (root.TryGetProperty("name", out var nameEl))
+				result.Name = nameEl.GetString() ?? "";
+			if (root.TryGetProperty("email", out var emailEl))
+				result.Email = emailEl.GetString() ?? "";
+			if (root.TryGetProperty("picture", out var picEl))
+				result.Picture = picEl.GetString() ?? "";
+
+			return result;
+		}
+		catch (Exception ex)
+		{
+			Log.Error("Failed to parse id_token", ex);
+			return null;
+		}
+	}
+
+}

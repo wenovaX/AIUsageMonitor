@@ -1,0 +1,39 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+	<!-- Thick Main Shape -->
+	<path d="
+    M340 360
+    C340 300 380 260 440 260
+    H584
+    C644 260 684 300 684 360
+    V664
+    C684 724 644 764 584 764
+    H440
+    C380 764 340 724 340 664
+    Z"
+	  fill="#F5F7FF"/>
+
+	<!-- Inner Hole -->
+	<path d="
+    M430 390
+    C430 360 450 340 480 340
+    H544
+    C574 340 594 360 594 390
+    V634
+    C594 664 574 684 544 684
+    H480
+    C450 684 430 664 430 634
+    Z"
+	  fill="black"/>
+
+	<!-- Radar Eye -->
+	<circle cx="512" cy="512" r="84" fill="#F5F7FF"/>
+	<circle cx="512" cy="512" r="34" fill="black"/>
+
+	<!-- Detection Accent -->
+	<path d="M700 310 L780 240"
+		  stroke="#F5F7FF"
+		  stroke-width="52"
+		  stroke-linecap="round"/>
+
+</svg>

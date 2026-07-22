@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Windows Machine": {
+      "commandName": "Project",
+      "nativeDebugging": true,
+      "environmentVariables": {
+        "AIUSAGEMONITOR_CODEX_RAW_LOG": "1"
+      }
+    }
+  }
+}

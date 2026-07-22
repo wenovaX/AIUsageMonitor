@@ -1,0 +1,75 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+	<!-- Organic Radar Blob -->
+	<path d="
+    M180 360
+    C180 220 320 120 470 120
+    C620 120 760 170 850 280
+    C930 380 930 560 860 700
+    C790 850 650 920 500 920
+    C340 920 200 850 140 720
+    C80 590 90 470 180 360
+    Z"
+	  fill="#0B1020"/>
+
+	<!-- Large Radar Ring -->
+	<path d="
+    M250 510
+    C250 340 380 220 540 220
+    C700 220 810 340 810 500
+    C810 670 690 790 520 790
+    C360 790 250 670 250 510
+    Z"
+	  stroke="#1C2945"
+	  stroke-width="42"
+	  opacity="0.95"/>
+
+	<!-- Inner Ring -->
+	<path d="
+    M360 510
+    C360 410 430 340 530 340
+    C630 340 700 410 700 510
+    C700 610 630 680 530 680
+    C430 680 360 610 360 510
+    Z"
+	  stroke="#30456F"
+	  stroke-width="22"
+	  opacity="0.9"/>
+
+	<!-- Scan Sweep -->
+	<path d="
+    M520 510
+    L860 330
+    C900 470 890 620 810 760
+    Z"
+	  fill="url(#scan)"/>
+
+	<!-- Tech Grid Cuts -->
+	<path d="M180 620 L320 620"
+		  stroke="#243554"
+		  stroke-width="26"
+		  stroke-linecap="round"/>
+
+	<path d="M710 210 L810 210"
+		  stroke="#243554"
+		  stroke-width="20"
+		  stroke-linecap="round"/>
+
+	<path d="M760 780 L850 840"
+		  stroke="#243554"
+		  stroke-width="18"
+		  stroke-linecap="round"/>
+
+	<!-- Detection Dots -->
+	<circle cx="760" cy="450" r="14" fill="#7EE7FF"/>
+	<circle cx="820" cy="530" r="10" fill="#7EE7FF" opacity="0.7"/>
+	<circle cx="670" cy="760" r="12" fill="#7EE7FF" opacity="0.5"/>
+
+	<defs>
+		<linearGradient id="scan" x1="520" y1="510" x2="860" y2="330" gradientUnits="userSpaceOnUse">
+			<stop stop-color="#3BE1FF" stop-opacity="0"/>
+			<stop offset="1" stop-color="#3BE1FF" stop-opacity="0.28"/>
+		</linearGradient>
+	</defs>
+
+</svg>
