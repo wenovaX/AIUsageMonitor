@@ -28,8 +28,8 @@ public class AccountManagerService
 
         try
         {
-            var json = await File.ReadAllTextAsync(_filePath);
-            var list = JsonSerializer.Deserialize<List<CloudAccount>>(json);
+            var json = await JsonFileUtility.ReadTextAsync(_filePath);
+            var list = JsonFileUtility.Deserialize<List<CloudAccount>>(json);
             if (list != null)
             {
                 using var doc = JsonDocument.Parse(json);
@@ -38,21 +38,9 @@ public class AccountManagerService
                 var uniqueList = list.GroupBy(a => a.email.ToLower()).Select(g => g.First());
                 foreach (var acc in uniqueList)
                 {
-                    string? oldAccess = null;
-                    string? oldRefresh = null;
-                    
-                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var element in doc.RootElement.EnumerateArray())
-                        {
-                            if (element.TryGetProperty("id", out var idProp) && idProp.GetString() == acc.id)
-                            {
-                                oldAccess = element.TryGetProperty("access_token", out var aProp) ? aProp.GetString() : null;
-                                oldRefresh = element.TryGetProperty("refresh_token", out var rProp) ? rProp.GetString() : null;
-                                break;
-                            }
-                        }
-                    }
+                    var legacyTokens = LegacyAccountTokenReader.FindForAccount(doc.RootElement, acc.id);
+                    var oldAccess = legacyTokens.AccessToken;
+                    var oldRefresh = legacyTokens.RefreshToken;
 
                     // Migration logic: If tokens exist in JSON, move them to local token storage.
                     var (storedAccess, storedRefresh, _) = await _tokenStorage.LoadTokensAsync(acc.id);
@@ -99,8 +87,7 @@ public class AccountManagerService
                 await _tokenStorage.SaveTokensAsync(acc.id, acc.access_token, acc.refresh_token);
             }
 
-            var json = JsonSerializer.Serialize(Accounts.ToList());
-            await File.WriteAllTextAsync(_filePath, json);
+            await JsonFileUtility.WriteAsync(_filePath, Accounts.ToList());
         }
         catch (Exception ex)
         {
@@ -128,6 +115,8 @@ public class AccountManagerService
             existing.credits = account.credits;
             existing.quotas = account.quotas;
             existing.last_updated = DateTime.Now;
+            existing.HasError = account.HasError;
+            existing.LastErrorMessage = account.LastErrorMessage;
         }
         else
         {
@@ -135,8 +124,8 @@ public class AccountManagerService
             account.last_updated = DateTime.Now;
             Accounts.Add(account);
         }
-        _ = SaveAccountsAsync();
         SortAccounts();
+        _ = SaveAccountsAsync();
     }
 
     /// <summary>
@@ -144,7 +133,8 @@ public class AccountManagerService
     /// </summary>
     public void SortAccounts()
     {
-        if (Accounts.Count <= 1) return;
+        if (Accounts.Count <= 1)
+            return;
 
         // Sort by total percentage of visible quotas (descending)
         var sorted = Accounts.OrderByDescending(GetTotalUsagePercentage).ToList();
@@ -157,8 +147,6 @@ public class AccountManagerService
                 Accounts.Move(oldIndex, i);
             }
         }
-
-        _ = SaveAccountsAsync();
     }
 
     private double GetTotalUsagePercentage(CloudAccount acc)
@@ -188,51 +176,24 @@ public class AccountManagerService
     }
 
     /// <summary>
-    /// Exports all Google/Gemini accounts to a JSON file at the specified path.
-    /// </summary>
-    public async Task ExportAccountsAsync(string targetPath)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(Accounts.ToList());
-            await File.WriteAllTextAsync(targetPath, json);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to export accounts: {ex.Message}");
-            throw;
-        }
-    }
-
-    /// <summary>
     /// Imports Google/Gemini accounts from a JSON file at the specified path.
     /// </summary>
     public async Task ImportAccountsAsync(string sourcePath)
     {
         try
         {
-            var json = await File.ReadAllTextAsync(sourcePath);
-            var list = JsonSerializer.Deserialize<List<CloudAccount>>(json);
+            var json = await JsonFileUtility.ReadTextAsync(sourcePath);
+            var list = JsonFileUtility.Deserialize<List<CloudAccount>>(json);
             if (list != null)
             {
                 using var doc = JsonDocument.Parse(json);
                 foreach (var acc in list)
                 {
-                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var element in doc.RootElement.EnumerateArray())
-                        {
-                            if (element.TryGetProperty("id", out var idProp) && idProp.GetString() == acc.id)
-                            {
-                                var oldAccess = element.TryGetProperty("access_token", out var aProp) ? aProp.GetString() : null;
-                                var oldRefresh = element.TryGetProperty("refresh_token", out var rProp) ? rProp.GetString() : null;
-                                
-                                if (!string.IsNullOrEmpty(oldAccess)) acc.access_token = oldAccess;
-                                if (!string.IsNullOrEmpty(oldRefresh)) acc.refresh_token = oldRefresh;
-                                break;
-                            }
-                        }
-                    }
+                    var legacyTokens = LegacyAccountTokenReader.FindForAccount(doc.RootElement, acc.id);
+                    if (!string.IsNullOrEmpty(legacyTokens.AccessToken))
+                        acc.access_token = legacyTokens.AccessToken;
+                    if (!string.IsNullOrEmpty(legacyTokens.RefreshToken))
+                        acc.refresh_token = legacyTokens.RefreshToken;
                     AddOrUpdateAccount(acc);
                 }
             }

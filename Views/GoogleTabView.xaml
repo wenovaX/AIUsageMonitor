@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MainPageTabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:AIUsageMonitor.Models"
+             xmlns:converters="clr-namespace:AIUsageMonitor.Converters"
+             xmlns:controls="clr-namespace:AIUsageMonitor.Controls"
+             xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
+             xmlns:local="clr-namespace:AIUsageMonitor"
+             xmlns:views="clr-namespace:AIUsageMonitor.Views"
+             x:Class="AIUsageMonitor.Views.GoogleTabView" x:Name="TabRoot" x:DataType="local:MainPage">
+        <CollectionView Margin="20" ItemsSource="{Binding Accounts}" SelectionMode="None">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical" HorizontalItemSpacing="5" VerticalItemSpacing="5">
+                    <GridItemsLayout.Span>
+                        <Binding Path="AccountCardsPerRow" Source="{x:Reference TabRoot}" x:DataType="views:MainPageTabView" />
+                    </GridItemsLayout.Span>
+                </GridItemsLayout>
+            </CollectionView.ItemsLayout>
+            <CollectionView.Header>
+                <Border IsVisible="{Binding HasNoGoogleAccounts}" HorizontalOptions="Center" MaximumWidthRequest="440" Margin="0,0,0,11" BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="24">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="{loc:Loc Key=dashboard.google_empty_title}" FontSize="16" FontAttributes="Bold" TextColor="{StaticResource Slate50}" HorizontalTextAlignment="Center" />
+                        <Label Text="{loc:Loc Key=dashboard.google_empty_detail}" FontSize="12" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </Border>
+            </CollectionView.Header>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:CloudAccount">
+                    <Border StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                        <Border.Shadow><Shadow Brush="Black" Offset="0,3" Radius="8" Opacity="0.22" /></Border.Shadow>
+                        <Grid RowDefinitions="Auto, Auto, Auto">
+                            <!-- Card Header -->
+                            <VerticalStackLayout>
+                                <!-- Avatar and Email -->
+                    <controls:AccountCardHeaderView
+                        Account="{Binding .}"
+                        DisplayName="{Binding DisplayName}"
+                        DisplayEmail="{Binding DisplayEmail}"
+                        AvatarText="{Binding email, Converter={StaticResource AnonymousAvatarConverter}}"
+                        AvatarImageSource="{Binding AvatarImageSource}"
+                        HasAvatarImage="{Binding HasAvatarImage}"
+                        IsAnonymous="{Binding IsAnonymous}"
+                        IsRefreshing="{Binding IsRefreshing}"
+                        IsRefreshQueued="{Binding IsRefreshQueued}"
+                        HasError="{Binding HasError}"
+                        ErrorTapped="OnErrorIconTapped" />
+
+                                <!-- Actions & Credits -->
+                                <Grid ColumnDefinitions="Auto, *, Auto" Padding="14,0" BackgroundColor="{StaticResource Slate900}">
+                                    <HorizontalStackLayout Grid.Column="0" Spacing="0" VerticalOptions="Center">
+                                        <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4" ToolTipProperties.Text="{loc:Loc Key=dashboard.account_visibility_tooltip}">
+                                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnToggleSettingsTapped" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                            <Label Text="⚙" TextColor="{StaticResource Slate400}" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+
+                                        <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4" ToolTipProperties.Text="{loc:Loc Key=dashboard.refresh_account_tooltip}">
+                                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshAccountClicked" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                            <Label Text="↻" TextColor="{StaticResource Slate400}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+
+                                    <Label Grid.Column="2" Text="{Binding credits, StringFormat='${0:F2}'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <!-- Quotas (Middle Area) -->
+                            <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="8">
+                                <VerticalStackLayout Spacing="5" IsVisible="{Binding HasGeminiQuotas}">
+                                    <Label Text="Gemini" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding GeminiQuotas}" Spacing="3">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="models:ModelQuotaInfo">
+                                                <Grid HeightRequest="26" BackgroundColor="{StaticResource Slate700}">
+                                                    <ProgressBar ScaleY="6" Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}"
+                                                                 ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}"
+                                                                 BackgroundColor="Transparent" Opacity="0.4" />
+                                                    <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                        <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                                        <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                        <Label Grid.Column="2" Text="{Binding percentage, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                                    </Grid>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+
+                                <VerticalStackLayout Spacing="5" IsVisible="{Binding HasOtherQuotas}">
+                                    <Label Text="{loc:Loc Key=dashboard.others}" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding OtherQuotas}" Spacing="3">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="models:ModelQuotaInfo">
+                                                <Grid HeightRequest="26" BackgroundColor="{StaticResource Slate700}">
+                                                    <ProgressBar ScaleY="6" Progress="{Binding percentage, Converter={StaticResource PercentageConverter}}"
+                                                                 ProgressColor="{Binding percentage, Converter={StaticResource PercentageColorConverter}}"
+                                                                 BackgroundColor="Transparent" Opacity="0.4" />
+                                                    <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                        <Label Text="{Binding display_name}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Slate50}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                                        <Label Grid.Column="1" Text="{Binding resetTime}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                        <Label Grid.Column="2" Text="{Binding percentage, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                                    </Grid>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+
+                            <!-- Bottom Button (Stuck to bottom) -->
+                                    <Button Grid.Row="2" Text="{loc:Loc Key=common.remove_account}" Clicked="OnDeleteAccountClicked" CommandParameter="{Binding id}"
+                                    Style="{StaticResource RemoveButtonStyle}"
+                                    FontSize="10" HorizontalOptions="Fill" HeightRequest="32" Padding="0"
+                                    CornerRadius="0" VerticalOptions="End" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+</views:MainPageTabView>

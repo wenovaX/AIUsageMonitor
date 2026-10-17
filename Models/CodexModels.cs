@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using AIUsageMonitor.Localization;
 
 namespace AIUsageMonitor.Models;
 
@@ -20,12 +21,12 @@ public class CodexAccount : INotifyPropertyChanged
 
 	// Primary window (the main usage gauge — often labeled "주간 사용 한도" on the site)
 	private int _primaryUsedPercent;
-	private string _primaryWindowLabel = "Usage Limit";
+	private string _primaryWindowLabel = LocalizationManager.Text("codex.usage_limit");
 	private string _primaryResetDescription = string.Empty;
 
 	// Secondary window (longer cycle — often shows a reset date, not a gauge)
 	private int _secondaryUsedPercent;
-	private string _secondaryWindowLabel = "Reset Date";
+	private string _secondaryWindowLabel = LocalizationManager.Text("codex.reset_date");
 	private string _secondaryResetDescription = string.Empty;
 	private bool _isTrialExpired;
 
@@ -227,8 +228,9 @@ public class CodexAccount : INotifyPropertyChanged
 	public int DisplayIndex { get; set; }
 
 	[JsonIgnore]
-	public string DisplayName => IsAnonymous ? $"User {DisplayIndex + 1}" : 
-		(!string.IsNullOrEmpty(name) ? name : "Codex Account");
+	public string DisplayName => IsAnonymous
+		? LocalizationManager.Format("codex.anonymous_user", DisplayIndex + 1)
+		: (!string.IsNullOrEmpty(name) ? name : LocalizationManager.Text("codex.account_default"));
 
 	[JsonIgnore]
 	public string DisplayEmail => IsAnonymous ? login_method.ToUpper() : 
@@ -255,15 +257,19 @@ public class CodexAccount : INotifyPropertyChanged
 		secondaryUsedPercent >= 100;
 
 	[JsonIgnore]
-	public string PrimaryStatusText => $"Resets: {primaryResetDescription}";
+	public string PrimaryStatusText => LocalizationManager.Format("codex.resets_format", primaryResetDescription);
 
 	[JsonIgnore]
-	public string SecondaryStatusText => $"Resets: {secondaryResetDescription}";
+	public string SecondaryStatusText => LocalizationManager.Format("codex.resets_format", secondaryResetDescription);
 
 	[JsonIgnore]
 	public string SecondaryResetHeader => string.IsNullOrWhiteSpace(secondaryWindowLabel)
 		? string.Empty
-		: $"{secondaryWindowLabel} RESET";
+		: LocalizationManager.Format(
+			"codex.reset_header_format",
+			string.Equals(secondaryWindowLabel, "Weekly", StringComparison.OrdinalIgnoreCase)
+				? LocalizationManager.Text("codex.weekly")
+				: secondaryWindowLabel);
 
 	[JsonIgnore]
 	public string UsageLimitBadgeText
@@ -271,13 +277,13 @@ public class CodexAccount : INotifyPropertyChanged
 		get
 		{
 			if (IsTrialExpired)
-				return "SUBSCRIPTION REQUIRED";
+				return LocalizationManager.Text("codex.subscription_required");
 			if (IsWeeklyBlocked && IsPrimaryWindowExhausted)
-				return "WEEKLY & 5H BLOCKED";
+				return LocalizationManager.Text("codex.weekly_and_short_blocked");
 			if (IsWeeklyBlocked)
-				return "WEEKLY BLOCKED";
+				return LocalizationManager.Text("codex.weekly_blocked");
 			if (IsPrimaryWindowExhausted)
-				return $"{primaryWindowLabel.ToUpperInvariant()} BLOCKED";
+				return LocalizationManager.Format("codex.window_blocked", primaryWindowLabel.ToUpperInvariant());
 			return string.Empty;
 		}
 	}
@@ -293,15 +299,10 @@ public class CodexAccount : INotifyPropertyChanged
 		System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(plan_type.Replace("_", " "));
 
 	[JsonIgnore]
-	public string CreditsDisplay => unlimited_credits ? "Unlimited" : 
+	public string CreditsDisplay => unlimited_credits ? LocalizationManager.Text("codex.unlimited") :
 		(has_credits ? $"${credits:F2}" : "—");
 
 	public event PropertyChangedEventHandler? PropertyChanged;
 	protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
 		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-}
-
-public class CodexAccountRow
-{
-	public System.Collections.ObjectModel.ObservableCollection<CodexAccount> Accounts { get; } = new();
 }

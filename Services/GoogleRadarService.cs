@@ -16,7 +16,11 @@ public class GoogleRadarService
 
     public string RedirectUri => _oauthService.RedirectUri;
 
-    public string GetAuthUrl() => _googleApi.GetAuthUrl(RedirectUri);
+    public string GetAuthUrl()
+    {
+        var state = _oauthService.CreateState();
+        return _googleApi.GetAuthUrl(RedirectUri, state);
+    }
 
     public async Task<string> ReceiveCodeAsync(string authUrl, CancellationToken cancellationToken = default) => await _oauthService.ReceiveCodeAsync(authUrl, cancellationToken);
 

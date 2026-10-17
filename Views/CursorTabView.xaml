@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MainPageTabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:AIUsageMonitor.Models"
+             xmlns:controls="clr-namespace:AIUsageMonitor.Controls"
+             xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
+             xmlns:local="clr-namespace:AIUsageMonitor"
+             xmlns:views="clr-namespace:AIUsageMonitor.Views"
+             x:Class="AIUsageMonitor.Views.CursorTabView" x:Name="TabRoot" x:DataType="local:MainPage">
+        <CollectionView Margin="20" ItemsSource="{Binding CursorAccounts}" SelectionMode="None">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical" HorizontalItemSpacing="5" VerticalItemSpacing="5">
+                    <GridItemsLayout.Span>
+                        <Binding Path="AccountCardsPerRow" Source="{x:Reference TabRoot}" x:DataType="views:MainPageTabView" />
+                    </GridItemsLayout.Span>
+                </GridItemsLayout>
+            </CollectionView.ItemsLayout>
+            <CollectionView.Header>
+                <VerticalStackLayout Spacing="10" Margin="0,0,0,5">
+                <Border IsVisible="{Binding IsCursorDbMissing}" BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="16">
+                    <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                        <Label Text="{loc:Loc Key=cursor.not_detected_title}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" HorizontalTextAlignment="Center" />
+                        <Label Text="{Binding CursorDbStatusMessage}" FontSize="12" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                        <Label Text="{loc:Loc Key=cursor.not_detected_detail}" FontSize="11" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                        <Button Text="{loc:Loc Key=cursor.open_homepage}" Clicked="OnOpenCursorHomeClicked" Style="{StaticResource UtilityButtonStyle}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+                <Label IsVisible="{Binding IsCursorDbAvailable}" Text="{Binding CursorDbStatusMessage}" FontSize="11" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+            </CollectionView.Header>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:CursorAccount">
+                            <Border StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                                <Border.Shadow><Shadow Brush="Black" Offset="0,3" Radius="8" Opacity="0.22" /></Border.Shadow>
+                                <Grid RowDefinitions="Auto,Auto,Auto">
+                                    <VerticalStackLayout>
+                                <controls:AccountCardHeaderView
+                                    Account="{Binding .}"
+                                    DisplayName="{Binding DisplayName}"
+                                    AvatarText="R"
+                                    IsEmailVisible="False"
+                                    IsRefreshing="{Binding IsRefreshing}"
+                                    IsRefreshQueued="{Binding IsRefreshQueued}"
+                                    HasError="{Binding HasError}"
+                                    ErrorTapped="OnErrorIconTapped" />
+
+                                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="14,0" BackgroundColor="{StaticResource Slate900}">
+                                            <HorizontalStackLayout Grid.Column="0" Spacing="0" VerticalOptions="Center">
+                        <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4" ToolTipProperties.Text="{loc:Loc Key=dashboard.refresh_account_tooltip}">
+                                                    <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshAccountClicked" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                                    <Label Text="R" TextColor="{StaticResource Slate400}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                </Border>
+                                            </HorizontalStackLayout>
+                                            <Label Grid.Column="2" Text="{Binding ContextRemainingDisplay}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                        </Grid>
+                                    </VerticalStackLayout>
+
+                                    <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="5">
+                                        <Label Text="{Binding ContextTitle}" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" LineBreakMode="TailTruncation" />
+                                        <Grid HeightRequest="26" BackgroundColor="{StaticResource Slate700}">
+                                            <ProgressBar ScaleY="6" Progress="{Binding ContextUsageProgress}" ProgressColor="{StaticResource Sky400}" BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                                <Label Text="{loc:Loc Key=cursor.composer_context}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                                <Label Grid.Column="1" Text="{Binding ContextUsageDisplay}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                            </Grid>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <Label Text="{Binding ContextStatusDisplay}" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                            <Label Grid.Column="1" Text="{Binding ContextResetDisplay}" FontSize="9" TextColor="{StaticResource Slate500}" />
+                                        </Grid>
+                                    </VerticalStackLayout>
+
+                                    <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="6" HeightRequest="34">
+                                        <Button Grid.Column="0" Text="{loc:Loc Key=common.rename}" Clicked="OnRenameCursorAccountClicked" CommandParameter="{Binding id}"
+                                                Style="{StaticResource QuietButtonStyle}"
+                                                FontSize="10" HorizontalOptions="Fill" HeightRequest="32" Padding="0"
+                                                CornerRadius="6" VerticalOptions="End" />
+                                        <Button Grid.Column="1" Text="{loc:Loc Key=common.remove_account}" Clicked="OnDeleteCursorAccountClicked" CommandParameter="{Binding id}"
+                                                Style="{StaticResource RemoveButtonStyle}"
+                                                FontSize="10" HorizontalOptions="Fill" HeightRequest="32" Padding="0"
+                                                CornerRadius="6" VerticalOptions="End" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+</views:MainPageTabView>

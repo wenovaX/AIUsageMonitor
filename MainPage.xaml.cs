@@ -1,9 +1,12 @@
 using AIUsageMonitor.Models;
+using AIUsageMonitor.Localization;
 using AIUsageMonitor.PlatformAbstractions;
 using AIUsageMonitor.Services;
+using AIUsageMonitor.Views;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Windows.Input;
@@ -26,6 +29,19 @@ public partial class MainPage : ContentPage
         Background
     }
 
+    private sealed record RefreshOperation(
+        Func<bool> IsRefreshing,
+        Func<bool> IsQueued,
+        Action<bool> SetQueued,
+        Action<bool> SetRefreshing,
+        Action ClearError,
+        Action<Exception> SetError,
+        Func<Task> RefreshAsync,
+        int RetryCount,
+        int TimeoutSeconds,
+        bool DelayForAnimation,
+        Func<Exception, Task<bool>>? RecoverAsync = null);
+
     private readonly ModelCatalogService _modelCatalogService;
     private readonly GoogleRadarService _googleRadar;
     private readonly AccountManagerService _accountManager = new();
@@ -38,23 +54,24 @@ public partial class MainPage : ContentPage
     private readonly PlatformManager _platformManager;
     private readonly TokenStorageService _tokenStorage;
     private readonly NotificationService _notificationService;
-    private const double GoogleCardWidth = 240;
-    private const double GoogleCardSpacing = 5;
-    private const double GoogleLayoutHorizontalPadding = 80;
-    private const int GoogleLayoutDebounceMilliseconds = 120;
-
+    private readonly Dictionary<string, MainPageTabView> _tabContentCache = new(StringComparer.Ordinal);
+    private ObservableCollection<ModelCatalogSection>? _modelCatalogSections;
+    private bool _isRemovingAccount;
     public IReadOnlyList<DiscoveredModelEntry> GeminiCatalogModels =>
         _modelCatalogService.Models.Where(model => model.IsGemini).ToList();
 
     public IReadOnlyList<DiscoveredModelEntry> OtherCatalogModels =>
         _modelCatalogService.Models.Where(model => !model.IsGemini).ToList();
 
-    public ObservableCollection<GoogleAccountRow> GoogleAccountRows { get; } = new();
-    public ObservableCollection<CodexAccountRow> CodexAccountRows { get; } = new();
+    public ObservableCollection<ModelCatalogSection> ModelCatalogSections => _modelCatalogSections ??= new()
+    {
+        new("GEMINI", GeminiCatalogModels),
+        new(LocalizationManager.Text("dashboard.others"), OtherCatalogModels)
+    };
 
-    private const double CodexCardWidth = 240;
-    private const double CodexCardSpacing = 5;
-    private const double CodexLayoutHorizontalPadding = 50; // Fine-tuned wrapping offset
+    public bool CanCleanMissingModels => _modelCatalogService.HasAvailabilitySnapshot && _modelCatalogService.MissingModelCount > 0;
+
+    public int AccountCardsPerRow => CalculateAccountCardsPerRow();
 
     // Tab Navigation Logic
     private string _currentTab = "Google";
@@ -94,6 +111,8 @@ public partial class MainPage : ContentPage
             OnPropertyChanged(nameof(CanAddAccount));
             OnPropertyChanged(nameof(AddAccountButtonText));
 
+            ShowTabContent(value);
+
             if (value == "Cursor")
             {
                 RefreshCursorDbState();
@@ -108,6 +127,10 @@ public partial class MainPage : ContentPage
     public bool IsSettingsTab => CurrentTab == "Settings";
     public bool IsNotificationsTab => CurrentTab == "Notifications";
     public bool IsAboutTab => CurrentTab == "About";
+    public bool HasGoogleAccounts => Accounts.Count > 0;
+    public bool HasNoGoogleAccounts => !HasGoogleAccounts;
+    public bool HasCodexAccounts => CodexAccounts.Count > 0;
+    public bool HasNoCodexAccounts => !HasCodexAccounts;
 
     private bool _isAnonymousMode;
     public bool IsAnonymousMode
@@ -149,24 +172,12 @@ public partial class MainPage : ContentPage
         set { _platformManager.Current.SetRememberCloseChoice(value); OnPropertyChanged(); }
     }
 
-    private readonly SemaphoreSlim _globalRefreshSemaphore;
-    private readonly SemaphoreSlim _googleRefreshSemaphore;
-    private readonly SemaphoreSlim _cursorRefreshSemaphore;
-    private readonly SemaphoreSlim _codexRefreshSemaphore;
-    private readonly int _maxGlobalRefreshConcurrency;
-    private readonly int _maxGoogleRefreshConcurrency;
-    private readonly int _maxCodexRefreshConcurrency;
+    private readonly RefreshConcurrencyLimiter _refreshConcurrencyLimiter;
 #if WINDOWS
     private Microsoft.UI.Xaml.Window? _platformWindow;
 #endif
-    private CancellationTokenSource? _googleLayoutCts;
-    private int _lastGoogleCardsPerRow;
-    private string _lastGoogleLayoutSignature = string.Empty;
-    private readonly Dictionary<string, int> _googleAccountRowIndexById = new();
-    private readonly Dictionary<int, CancellationTokenSource> _googleRowRefreshCts = new();
-    private bool _isBulkUpdatingGoogleLayout;
     private bool _hasPendingModelCatalogUiRefresh;
-    private int _lastCodexCardsPerRow;
+    private int _lastAccountCardsPerRow;
 
     private bool _isLoginWaiting;
     public bool IsLoginWaiting
@@ -182,8 +193,21 @@ public partial class MainPage : ContentPage
         set { _isCodexLoginOverlayVisible = value; OnPropertyChanged(); }
     }
 
-    public const string AppVersion = "1.0.9";
+    public const string AppVersion = "1.1.0";
     public string DisplayVersion => $"v{AppVersion}";
+    public string AboutVersionLabel => LocalizationManager.Format("about.version", DisplayVersion);
+    public IReadOnlyList<string> LanguageOptions { get; } =
+    [
+        LocalizationManager.Text("settings.language_system"),
+        "English",
+        "한국어"
+    ];
+    public int LanguageSelectionIndex => LocalizationManager.NormalizePreference(NotificationSettings.LanguageCode) switch
+    {
+        "en" => 1,
+        "ko" => 2,
+        _ => 0
+    };
 
     private CancellationTokenSource? _loginCts;
     private CancellationTokenSource? _backgroundRefreshCts;
@@ -204,11 +228,11 @@ public partial class MainPage : ContentPage
     public bool IsCursorDbMissing => IsCursorTab && !_isCursorDbAvailable;
     public string CursorDbStatusMessage => _cursorDbStatusMessage;
     public bool CanAddAccount => !IsCursorTab || IsCursorDbAvailable;
-    public string AddAccountButtonText => IsCursorTab ? "+ Add Current Account" : "+ Add Account";
+    public string AddAccountButtonText => LocalizationManager.Text(IsCursorTab ? "app.add_current_account" : "app.add_account");
     public NotificationSettings NotificationSettings => _notificationService.Settings;
     private bool _isCursorDbAvailable;
-    private string _cursorDbPath = "Not found";
-    private string _cursorDbStatusMessage = "Cursor 설치가 필요합니다.";
+    private string _cursorDbPath = LocalizationManager.Text("cursor.path_not_found");
+    private string _cursorDbStatusMessage = LocalizationManager.Text("cursor.install_required");
 
     // Shared Settings Panel Logic
     private CloudAccount? _selectedAccount;
@@ -254,17 +278,14 @@ public partial class MainPage : ContentPage
         _modelCatalogService = MauiProgram.Services.GetRequiredService<ModelCatalogService>();
         _tokenStorage = MauiProgram.Services.GetRequiredService<TokenStorageService>();
         _notificationService = MauiProgram.Services.GetRequiredService<NotificationService>();
-        (_maxGlobalRefreshConcurrency, _maxGoogleRefreshConcurrency, _maxCodexRefreshConcurrency) = CalculateRefreshConcurrency();
-        _globalRefreshSemaphore = new SemaphoreSlim(_maxGlobalRefreshConcurrency, _maxGlobalRefreshConcurrency);
-        _googleRefreshSemaphore = new SemaphoreSlim(_maxGoogleRefreshConcurrency, _maxGoogleRefreshConcurrency);
-        _cursorRefreshSemaphore = new SemaphoreSlim(_maxCodexRefreshConcurrency, _maxCodexRefreshConcurrency);
-        _codexRefreshSemaphore = new SemaphoreSlim(_maxCodexRefreshConcurrency, _maxCodexRefreshConcurrency);
-        Debug.WriteLine($"Refresh queue initialized. Global={_maxGlobalRefreshConcurrency}, Google={_maxGoogleRefreshConcurrency}, Codex={_maxCodexRefreshConcurrency}");
+        _refreshConcurrencyLimiter = new RefreshConcurrencyLimiter(NotificationSettings.MaxConcurrentRefreshes);
+        NotificationSettings.PropertyChanged += OnNotificationSettingsPropertyChanged;
+        Debug.WriteLine($"Refresh concurrency initialized. Max={NotificationSettings.MaxConcurrentRefreshes}");
 
         _googleRadar = new GoogleRadarService();
-        _notificationService.OnNotificationTriggered += OnNotificationTriggered;
         InitializeComponent();
         BindingContext = this;
+        ShowTabContent(CurrentTab);
         HandlerChanged += OnHandlerChanged;
         Unloaded += OnUnloaded;
         SizeChanged += OnPageSizeChanged;
@@ -277,14 +298,32 @@ public partial class MainPage : ContentPage
         CursorAccounts.CollectionChanged += OnCursorAccountsCollectionChanged;
         _modelCatalogService.CatalogChanged += OnModelCatalogChanged;
         UpdateDisplayIndices();
-        foreach (var account in Accounts)
-        {
-            account.PropertyChanged += OnGoogleAccountPropertyChanged;
-        }
-        RebuildGoogleAccountRows();
-        RebuildCodexAccountRows();
-
         InitializeAsync();
+    }
+
+    private void ShowTabContent(string tab)
+    {
+        if (TabContentHost is null)
+            return;
+
+        if (!_tabContentCache.TryGetValue(tab, out var content))
+        {
+            content = tab switch
+            {
+                "Google" => new GoogleTabView(),
+                "Codex" => new CodexTabView(),
+                "Cursor" => new CursorTabView(),
+                "Notifications" => new NotificationsTabView(),
+                "Settings" => new SettingsTabView(),
+                "About" => new AboutTabView(),
+                _ => new GoogleTabView()
+            };
+            content.BindingContext = this;
+            content.AccountCardsPerRow = AccountCardsPerRow;
+            _tabContentCache[tab] = content;
+        }
+
+        TabContentHost.Content = content;
     }
 
     private async void InitializeAsync()
@@ -302,14 +341,6 @@ public partial class MainPage : ContentPage
 
         UpdateDisplayIndices();
         UpdateCodexDisplayIndices();
-
-        foreach (var account in Accounts)
-        {
-            account.PropertyChanged -= OnGoogleAccountPropertyChanged;
-            account.PropertyChanged += OnGoogleAccountPropertyChanged;
-        }
-        RebuildGoogleAccountRows();
-        RebuildCodexAccountRows();
 
         _ = RefreshAllAccounts(RefreshQueueLevel.Background);
         _ = RefreshAllCursorAccounts(RefreshQueueLevel.Background);
@@ -330,14 +361,10 @@ public partial class MainPage : ContentPage
 #endif
     }
 
-    private static (int Global, int Google, int Codex) CalculateRefreshConcurrency()
+    private void OnNotificationSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        var processorCount = Environment.ProcessorCount;
-        var global = processorCount >= 8 ? 3 : 2;
-        var google = Math.Min(2, global);
-        var codex = global;
-
-        return (global, google, codex);
+        if (e.PropertyName == nameof(NotificationSettings.MaxConcurrentRefreshes))
+            _refreshConcurrencyLimiter.SetMaxConcurrency(NotificationSettings.MaxConcurrentRefreshes);
     }
 
     protected override void OnAppearing()
@@ -358,28 +385,14 @@ public partial class MainPage : ContentPage
         _backgroundRefreshCts?.Cancel();
         _backgroundRefreshCts?.Dispose();
         _backgroundRefreshCts = null;
+        NotificationSettings.PropertyChanged -= OnNotificationSettingsPropertyChanged;
         SizeChanged -= OnPageSizeChanged;
-        _googleLayoutCts?.Cancel();
-        _googleLayoutCts?.Dispose();
-        _googleLayoutCts = null;
-        foreach (var cts in _googleRowRefreshCts.Values)
-        {
-            cts.Cancel();
-            cts.Dispose();
-        }
-        _googleRowRefreshCts.Clear();
         Accounts.CollectionChanged -= OnAccountsCollectionChanged;
         CodexAccounts.CollectionChanged -= OnCodexAccountsCollectionChanged;
         CursorAccounts.CollectionChanged -= OnCursorAccountsCollectionChanged;
         _modelCatalogService.CatalogChanged -= OnModelCatalogChanged;
-        _notificationService.OnNotificationTriggered -= OnNotificationTriggered;
-        foreach (var account in Accounts)
-        {
-            account.PropertyChanged -= OnGoogleAccountPropertyChanged;
-        }
         _platformManager.Current.WindowVisibilityChanged -= OnPlatformWindowVisibilityChanged;
         _platformManager.Current.WindowResizeCompleted -= OnPlatformWindowResizeCompleted;
-        _googleAccountRowIndexById.Clear();
 #if WINDOWS
         if (_platformWindow?.Content is UIElement rootElement)
         {
@@ -406,11 +419,14 @@ public partial class MainPage : ContentPage
         if (_isShuttingDown)
             return;
 
-        if (_platformManager.Current.IsWindowResizeInProgress)
+        var cardsPerRow = CalculateAccountCardsPerRow();
+        if (_lastAccountCardsPerRow == cardsPerRow)
             return;
 
-        ScheduleGoogleAccountRowRefresh();
-        RebuildCodexAccountRows();
+        _lastAccountCardsPerRow = cardsPerRow;
+        OnPropertyChanged(nameof(AccountCardsPerRow));
+        foreach (var tabView in _tabContentCache.Values)
+            tabView.AccountCardsPerRow = cardsPerRow;
     }
 
     private void OnAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -418,207 +434,8 @@ public partial class MainPage : ContentPage
         if (_isShuttingDown)
             return;
 
-        if (e.OldItems != null)
-        {
-            foreach (CloudAccount account in e.OldItems)
-            {
-                account.PropertyChanged -= OnGoogleAccountPropertyChanged;
-            }
-        }
-
-        if (e.NewItems != null)
-        {
-            foreach (CloudAccount account in e.NewItems)
-            {
-                account.PropertyChanged -= OnGoogleAccountPropertyChanged;
-                account.PropertyChanged += OnGoogleAccountPropertyChanged;
-            }
-        }
-
-        RebuildGoogleAccountRows();
-    }
-
-    private void ScheduleGoogleAccountRowRefresh(bool force = false)
-    {
-        if (_isShuttingDown)
-            return;
-
-        var signature = BuildGoogleLayoutSignature();
-        if (!force && signature == _lastGoogleLayoutSignature)
-            return;
-
-        _googleLayoutCts?.Cancel();
-        _googleLayoutCts?.Dispose();
-        _googleLayoutCts = new CancellationTokenSource();
-        var token = _googleLayoutCts.Token;
-
-        _ = MainThread.InvokeOnMainThreadAsync(async () =>
-        {
-            try
-            {
-                await Task.Delay(GoogleLayoutDebounceMilliseconds, token);
-                if (token.IsCancellationRequested || _isShuttingDown)
-                    return;
-
-                var refreshedSignature = BuildGoogleLayoutSignature();
-                if (!force && refreshedSignature == _lastGoogleLayoutSignature)
-                    return;
-
-                RebuildGoogleAccountRows();
-            }
-            catch (TaskCanceledException)
-            {
-            }
-        });
-    }
-
-    private void OnGoogleAccountPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (_isShuttingDown)
-            return;
-
-        if (_isBulkUpdatingGoogleLayout)
-            return;
-
-        if (sender is not CloudAccount account)
-            return;
-
-        if (e.PropertyName is not nameof(CloudAccount.quotas)
-            and not nameof(CloudAccount.HiddenModels)
-            and not nameof(CloudAccount.GeminiQuotas)
-            and not nameof(CloudAccount.OtherQuotas)
-            and not nameof(CloudAccount.HasGeminiQuotas)
-            and not nameof(CloudAccount.HasOtherQuotas))
-        {
-            return;
-        }
-
-        RefreshGoogleAccountRow(account);
-    }
-
-    private void RebuildGoogleAccountRows()
-    {
-        if (_isShuttingDown)
-            return;
-
-        foreach (var cts in _googleRowRefreshCts.Values)
-        {
-            cts.Cancel();
-            cts.Dispose();
-        }
-        _googleRowRefreshCts.Clear();
-
-        GoogleAccountRows.Clear();
-        _googleAccountRowIndexById.Clear();
-
-        _lastGoogleCardsPerRow = CalculateGoogleCardsPerRow();
-        _lastGoogleLayoutSignature = BuildGoogleLayoutSignature();
-
-        if (Accounts.Count == 0)
-            return;
-
-        var cardsPerRow = _lastGoogleCardsPerRow;
-
-        for (int i = 0; i < Accounts.Count; i += cardsPerRow)
-        {
-            var rowAccounts = Accounts.Skip(i).Take(cardsPerRow).ToList();
-            var rowHeight = rowAccounts.Max(EstimateGoogleCardHeight);
-            var row = new GoogleAccountRow();
-            var rowIndex = GoogleAccountRows.Count;
-
-            foreach (var account in rowAccounts)
-            {
-                account.CardHeightHint = rowHeight;
-                row.Accounts.Add(account);
-                _googleAccountRowIndexById[account.id] = rowIndex;
-            }
-
-            GoogleAccountRows.Add(row);
-        }
-    }
-
-    private void RefreshGoogleAccountRow(CloudAccount account)
-    {
-        if (_isShuttingDown)
-            return;
-
-        if (!_googleAccountRowIndexById.TryGetValue(account.id, out var rowIndex)
-            || rowIndex < 0
-            || rowIndex >= GoogleAccountRows.Count)
-        {
-            RebuildGoogleAccountRows();
-            return;
-        }
-
-        ScheduleGoogleAccountRowHeightRefresh(rowIndex);
-    }
-
-    private void ScheduleGoogleAccountRowHeightRefresh(int rowIndex)
-    {
-        if (_isShuttingDown)
-            return;
-
-        if (rowIndex < 0 || rowIndex >= GoogleAccountRows.Count)
-            return;
-
-        if (_googleRowRefreshCts.TryGetValue(rowIndex, out var existingCts))
-        {
-            existingCts.Cancel();
-            existingCts.Dispose();
-        }
-
-        var cts = new CancellationTokenSource();
-        _googleRowRefreshCts[rowIndex] = cts;
-        var token = cts.Token;
-
-        _ = MainThread.InvokeOnMainThreadAsync(async () =>
-        {
-            try
-            {
-                await Task.Delay(GoogleLayoutDebounceMilliseconds, token);
-                if (token.IsCancellationRequested || _isShuttingDown)
-                    return;
-
-                RefreshGoogleAccountRowCore(rowIndex);
-            }
-            catch (TaskCanceledException)
-            {
-            }
-            finally
-            {
-                if (!_isShuttingDown && _googleRowRefreshCts.TryGetValue(rowIndex, out var current) && current == cts)
-                {
-                    _googleRowRefreshCts.Remove(rowIndex);
-                }
-                cts.Dispose();
-            }
-        });
-    }
-
-    private void RefreshGoogleAccountRowCore(int rowIndex)
-    {
-        if (_isShuttingDown)
-            return;
-
-        if (rowIndex < 0 || rowIndex >= GoogleAccountRows.Count)
-            return;
-
-        var row = GoogleAccountRows[rowIndex];
-        if (row.Accounts.Count == 0)
-            return;
-
-        var newRowHeight = row.Accounts.Max(EstimateGoogleCardHeight);
-        var currentHeight = row.Accounts[0].CardHeightHint;
-
-        if (Math.Abs(currentHeight - newRowHeight) < 0.5)
-            return;
-
-        foreach (var rowAccount in row.Accounts)
-        {
-            rowAccount.CardHeightHint = newRowHeight;
-        }
-
-        _lastGoogleLayoutSignature = BuildGoogleLayoutSignature();
+        OnPropertyChanged(nameof(HasGoogleAccounts));
+        OnPropertyChanged(nameof(HasNoGoogleAccounts));
     }
 
     private void OnPlatformWindowResizeCompleted(object? sender, EventArgs e)
@@ -626,8 +443,7 @@ public partial class MainPage : ContentPage
         if (_isShuttingDown)
             return;
 
-        RebuildGoogleAccountRows();
-        RebuildCodexAccountRows();
+        OnPageSizeChanged(sender, e);
     }
 
     private void OnCodexAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -635,7 +451,8 @@ public partial class MainPage : ContentPage
         if (_isShuttingDown)
             return;
 
-        RebuildCodexAccountRows();
+        OnPropertyChanged(nameof(HasCodexAccounts));
+        OnPropertyChanged(nameof(HasNoCodexAccounts));
     }
 
     private void OnCursorAccountsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -646,42 +463,6 @@ public partial class MainPage : ContentPage
         NotifyStatsChanged();
     }
 
-    private void RebuildCodexAccountRows()
-    {
-        if (_isShuttingDown)
-            return;
-
-        CodexAccountRows.Clear();
-        _lastCodexCardsPerRow = CalculateCodexCardsPerRow();
-
-        if (CodexAccounts.Count == 0)
-            return;
-
-        var cardsPerRow = _lastCodexCardsPerRow;
-
-        for (int i = 0; i < CodexAccounts.Count; i += cardsPerRow)
-        {
-            var rowAccounts = CodexAccounts.Skip(i).Take(cardsPerRow).ToList();
-            var row = new CodexAccountRow();
-
-            foreach (var account in rowAccounts)
-            {
-                row.Accounts.Add(account);
-            }
-
-            CodexAccountRows.Add(row);
-        }
-    }
-
-    private int CalculateCodexCardsPerRow()
-    {
-        var availableWidth = Width <= 0
-            ? CodexCardWidth
-            : Math.Max(CodexCardWidth, Width - CodexLayoutHorizontalPadding);
-
-        return Math.Max(1, (int)Math.Floor((availableWidth + CodexCardSpacing) / (CodexCardWidth + CodexCardSpacing)));
-    }
-
     private void OnModelCatalogChanged(object? sender, EventArgs e)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -689,11 +470,12 @@ public partial class MainPage : ContentPage
             if (_isShuttingDown)
                 return;
 
+            SyncModelCatalogSections();
+            OnPropertyChanged(nameof(CanCleanMissingModels));
+
             if (IsSettingsTab)
             {
                 _hasPendingModelCatalogUiRefresh = true;
-                OnPropertyChanged(nameof(GeminiCatalogModels));
-                OnPropertyChanged(nameof(OtherCatalogModels));
                 return;
             }
 
@@ -703,27 +485,14 @@ public partial class MainPage : ContentPage
 
     private void RefreshModelCatalogUi()
     {
-        OnPropertyChanged(nameof(GeminiCatalogModels));
-        OnPropertyChanged(nameof(OtherCatalogModels));
+        SyncModelCatalogSections();
 
-        _isBulkUpdatingGoogleLayout = true;
-        try
-        {
-            foreach (var account in Accounts)
-            {
-                account.NotifyQuotaChanges();
-            }
-        }
-        finally
-        {
-            _isBulkUpdatingGoogleLayout = false;
-        }
-
-        RebuildGoogleAccountRows();
+        foreach (var account in Accounts)
+            account.NotifyQuotaChanges();
         NotifyStatsChanged();
     }
 
-    private async void OnUpdateModelListClicked(object? sender, EventArgs e)
+    internal async void OnUpdateModelListClicked(object? sender, EventArgs e)
     {
         var hasRegisteredAntigravityAccount = Accounts.Any(account =>
             !string.IsNullOrWhiteSpace(account.refresh_token) ||
@@ -731,7 +500,10 @@ public partial class MainPage : ContentPage
 
         if (!hasRegisteredAntigravityAccount)
         {
-            await DisplayAlertAsync("Antigravity Models", "유효한 Antigravity 계정을 하나 이상 등록하고 다시 눌러주세요.", "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.antigravity_models_title"),
+                LocalizationManager.Text("errors.antigravity_account_required"),
+                LocalizationManager.Text("common.ok"));
             return;
         }
 
@@ -744,58 +516,76 @@ public partial class MainPage : ContentPage
 
         if (discoveredModels.Count == 0)
         {
-            await DisplayAlertAsync("Antigravity Models", "Antigravity 정보를 아직 불러오지 못했습니다. 계정을 하나 이상 등록하고 새로고침한 뒤 다시 눌러주세요.", "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.antigravity_models_title"),
+                LocalizationManager.Text("errors.antigravity_data_unavailable"),
+                LocalizationManager.Text("common.ok"));
             return;
         }
 
-        var updated = _modelCatalogService.UpdateAvailableModels(discoveredModels);
-        if (!updated)
-        {
-            OnPropertyChanged(nameof(GeminiCatalogModels));
-            OnPropertyChanged(nameof(OtherCatalogModels));
-        }
+        _modelCatalogService.UpdateAvailableModels(discoveredModels);
     }
 
-    private void OnSetModelListToDefaultClicked(object? sender, EventArgs e)
+    internal void OnSetModelListToDefaultClicked(object? sender, EventArgs e)
     {
         _modelCatalogService.ResetToDefaults();
         OnPropertyChanged(nameof(GeminiCatalogModels));
         OnPropertyChanged(nameof(OtherCatalogModels));
     }
 
-    private string BuildGoogleLayoutSignature()
+    internal async void OnCleanMissingModelsClicked(object? sender, EventArgs e)
     {
-        var cardsPerRow = CalculateGoogleCardsPerRow();
-        var heightSignature = string.Join(",", Accounts.Select(a => EstimateGoogleCardHeight(a).ToString("F0")));
-        return $"{cardsPerRow}|{heightSignature}";
+        var missingCount = _modelCatalogService.MissingModelCount;
+        if (missingCount == 0)
+            return;
+
+        var confirmed = await DisplayAlertAsync(
+            LocalizationManager.Text("settings.clean_missing_models_title"),
+            LocalizationManager.Format("settings.clean_missing_models_message", missingCount),
+            LocalizationManager.Text("common.yes"),
+            LocalizationManager.Text("common.no"));
+
+        if (!confirmed)
+            return;
+
+        _modelCatalogService.RemoveMissingModels();
+        OnPropertyChanged(nameof(CanCleanMissingModels));
     }
 
-    private int CalculateGoogleCardsPerRow()
+    internal void OnDecreaseRefreshConcurrencyClicked(object? sender, EventArgs e) =>
+        NotificationSettings.MaxConcurrentRefreshes--;
+
+    internal void OnIncreaseRefreshConcurrencyClicked(object? sender, EventArgs e) =>
+        NotificationSettings.MaxConcurrentRefreshes++;
+
+    private void SyncModelCatalogSections()
     {
+        var sections = ModelCatalogSections;
+        SyncModelCatalogSection(sections[0], GeminiCatalogModels);
+        SyncModelCatalogSection(sections[1], OtherCatalogModels);
+    }
+
+    private static void SyncModelCatalogSection(ModelCatalogSection section, IReadOnlyList<DiscoveredModelEntry> entries)
+    {
+        if (section.SequenceEqual(entries))
+            return;
+
+        section.Clear();
+        foreach (var entry in entries)
+            section.Add(entry);
+    }
+
+    private int CalculateAccountCardsPerRow()
+    {
+        const double minimumCardWidth = 240;
+        const double itemSpacing = 5;
+        const double sidebarWidth = 80;
+        const double collectionPadding = 40;
         var availableWidth = Width <= 0
-            ? GoogleCardWidth
-            : Math.Max(GoogleCardWidth, Width - GoogleLayoutHorizontalPadding);
+            ? minimumCardWidth
+            : Math.Max(minimumCardWidth, Width - sidebarWidth - collectionPadding);
 
-        return Math.Max(1, (int)Math.Floor((availableWidth + GoogleCardSpacing) / (GoogleCardWidth + GoogleCardSpacing)));
-    }
-
-    private static double EstimateGoogleCardHeight(CloudAccount account)
-    {
-        var height = 136d;
-
-        if (account.HasGeminiQuotas)
-        {
-            height += 16;
-            height += account.GeminiQuotas.Count() * 28;
-        }
-
-        if (account.HasOtherQuotas)
-        {
-            height += 16;
-            height += account.OtherQuotas.Count() * 28;
-        }
-
-        return Math.Max(210, height);
+        return Math.Max(1, (int)Math.Floor((availableWidth + itemSpacing) / (minimumCardWidth + itemSpacing)));
     }
 
     private List<ModelQuotaInfo> GetVisibleGoogleQuotasSnapshot()
@@ -867,7 +657,7 @@ public partial class MainPage : ContentPage
         IsAnonymousMode = !IsAnonymousMode;
     }
 
-    private void OnToggleSettingsTapped(object? sender, TappedEventArgs e)
+    internal void OnToggleSettingsTapped(object? sender, TappedEventArgs e)
     {
         if (e.Parameter is CloudAccount account)
         {
@@ -886,7 +676,10 @@ public partial class MainPage : ContentPage
         {
             if (!CanAddAccount)
             {
-                await DisplayAlertAsync("Cursor Not Ready", "Cursor 설치/로그인 후 다시 시도해 주세요.", "OK");
+                await DisplayAlertAsync(
+                    LocalizationManager.Text("errors.cursor_not_ready_title"),
+                    LocalizationManager.Text("errors.cursor_not_ready"),
+                    LocalizationManager.Text("common.ok"));
                 return;
             }
             await PromptAddCursorAccount();
@@ -899,6 +692,11 @@ public partial class MainPage : ContentPage
             return;
         }
 
+        await LoginWithGoogleAsync();
+    }
+
+    private async Task LoginWithGoogleAsync()
+    {
         _loginCts?.Cancel();
         _loginCts = new CancellationTokenSource();
 
@@ -926,7 +724,6 @@ public partial class MainPage : ContentPage
             await _googleRadar.UpdateAccountDataAsync(account);
             _accountManager.AddOrUpdateAccount(account);
             UpdateDisplayIndices();
-            RebuildGoogleAccountRows();
             NotifyStatsChanged();
         }
         catch (OperationCanceledException)
@@ -945,15 +742,20 @@ public partial class MainPage : ContentPage
 
     private async Task PromptAddCodexAccount()
     {
-        var action = await DisplayActionSheetAsync("Add Codex Account", "Cancel", null,
-            "Login with OpenAI (OAuth)",
-            "Login with OpenAI (Web Session)");
+        string oauthOption = LocalizationManager.Text("login.openai_oauth");
+        string webSessionOption = LocalizationManager.Text("login.openai_web_session");
+        var action = await DisplayActionSheetAsync(
+            LocalizationManager.Text("login.add_codex_title"),
+            LocalizationManager.Text("common.cancel"),
+            null,
+            oauthOption,
+            webSessionOption);
 
-        if (action == "Login with OpenAI (OAuth)")
+        if (action == oauthOption)
         {
             await LoginViaOpenAIFlow();
         }
-        else if (action == "Login with OpenAI (Web Session)")
+        else if (action == webSessionOption)
         {
             StartCodexWebViewLogin(clearSession: true);
         }
@@ -968,7 +770,10 @@ public partial class MainPage : ContentPage
             if (!IsCursorDbAvailable)
             {
                 Trace.WriteLine("[Cursor] Add aborted: DB unavailable.");
-                await DisplayAlertAsync("Cursor Not Detected", "Cursor 설치/로그인 후 다시 시도해 주세요.", "OK");
+                await DisplayAlertAsync(
+                    LocalizationManager.Text("errors.cursor_not_detected_title"),
+                    LocalizationManager.Text("errors.cursor_not_ready"),
+                    LocalizationManager.Text("common.ok"));
                 return;
             }
 
@@ -976,7 +781,7 @@ public partial class MainPage : ContentPage
             var session = await _cursorDbTokenService.TryReadCurrentSessionAsync();
             Trace.WriteLine($"[Cursor] Session read result: success={session.Success}, db={session.DbPath}, msg={session.Message}");
             if (!session.Success || string.IsNullOrWhiteSpace(session.SessionToken))
-                throw new Exception($"Cursor 세션을 읽지 못했습니다: {session.Message}");
+                throw new Exception(LocalizationManager.Format("errors.cursor_session_unavailable", session.Message));
 
             var account = new CursorAccount
             {
@@ -989,12 +794,18 @@ public partial class MainPage : ContentPage
             _cursorAccountManager.AddOrUpdateAccount(account);
             NotifyStatsChanged();
             Trace.WriteLine($"[Cursor] Account added/updated. email={account.email}, id={account.id}");
-            await DisplayAlertAsync("Success", "현재 Cursor 계정을 추가했습니다.", "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("messages.cursor_account_added_title"),
+                LocalizationManager.Text("messages.cursor_account_added"),
+                LocalizationManager.Text("common.ok"));
         }
         catch (Exception ex)
         {
             Trace.WriteLine($"[Cursor] Add failed: {ex}");
-            await DisplayAlertAsync("Cursor Login Failed", ex.Message, "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.cursor_login_failed_title"),
+                LocalizationManager.Format("errors.cursor_login_failed_detail", ex.Message),
+                LocalizationManager.Text("common.ok"));
         }
         finally
         {
@@ -1006,10 +817,10 @@ public partial class MainPage : ContentPage
     {
         var path = _cursorDbTokenService.FindCursorDbPath();
         _isCursorDbAvailable = !string.IsNullOrWhiteSpace(path);
-        _cursorDbPath = path ?? "Not found";
-        _cursorDbStatusMessage = _isCursorDbAvailable ?
-            "Cursor DB detected. Click 'Add Current Account' above to add your currently logged-in account."
-            : "Please check your Cursor installation or login status. It will be detected automatically after installation and login.";
+        _cursorDbPath = path ?? LocalizationManager.Text("cursor.path_not_found");
+        _cursorDbStatusMessage = LocalizationManager.Text(_isCursorDbAvailable
+            ? "cursor.detected"
+            : "cursor.check_installation");
 
         OnPropertyChanged(nameof(IsCursorDbAvailable));
         OnPropertyChanged(nameof(IsCursorDbMissing));
@@ -1020,7 +831,30 @@ public partial class MainPage : ContentPage
         Trace.WriteLine($"[Cursor] DB state refreshed. available={_isCursorDbAvailable}, path={_cursorDbPath}");
     }
 
-    private async void OnOpenCursorStorageFolderClicked(object? sender, EventArgs e)
+    internal async void OnLanguageSelectionChanged(object? sender, EventArgs e)
+    {
+        if (sender is not Picker picker || picker.SelectedIndex is < 0 or > 2)
+            return;
+
+        string languageCode = picker.SelectedIndex switch
+        {
+            1 => "en",
+            2 => "ko",
+            _ => "system"
+        };
+
+        if (LocalizationManager.NormalizePreference(NotificationSettings.LanguageCode) == languageCode)
+            return;
+
+        NotificationSettings.LanguageCode = languageCode;
+        OnPropertyChanged(nameof(LanguageSelectionIndex));
+        await DisplayAlertAsync(
+            LocalizationManager.Text("settings.language_restart_title"),
+            LocalizationManager.Text("settings.language_restart_detail"),
+            LocalizationManager.Text("common.ok"));
+    }
+
+    internal async void OnOpenCursorStorageFolderClicked(object? sender, EventArgs e)
     {
         try
         {
@@ -1040,11 +874,14 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Open Folder Failed", ex.Message, "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.open_folder_failed_title"),
+                ex.Message,
+                LocalizationManager.Text("common.ok"));
         }
     }
 
-    private async void OnOpenCursorHomeClicked(object? sender, EventArgs e)
+    internal async void OnOpenCursorHomeClicked(object? sender, EventArgs e)
     {
         await Launcher.Default.OpenAsync("https://cursor.com/");
     }
@@ -1277,7 +1114,10 @@ public partial class MainPage : ContentPage
 
             _codexAccountManager.AddOrUpdateAccount(codexAccount);
             UpdateCodexDisplayIndices();
-            await DisplayAlertAsync("Success", "OpenAI account successfully authorized and added.", "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("messages.openai_account_added_title"),
+                LocalizationManager.Text("messages.openai_account_added"),
+                LocalizationManager.Text("common.ok"));
         }
         catch (OperationCanceledException)
         {
@@ -1286,7 +1126,10 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Debug.WriteLine($"OpenAI Login Error: {ex.Message}");
-            await DisplayAlertAsync("Login Failed", ex.Message, "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.login_failed_title"),
+                ex.Message,
+                LocalizationManager.Text("common.ok"));
         }
         finally
         {
@@ -1441,7 +1284,10 @@ public partial class MainPage : ContentPage
                 else
                 {
                     Log.Info("No refresh token available, prompting re-login.");
-                    await DisplayAlertAsync("Session Expired", "Please log in again.", "OK");
+                    await DisplayAlertAsync(
+                        LocalizationManager.Text("errors.session_expired_title"),
+                        LocalizationManager.Text("errors.session_expired_detail"),
+                        LocalizationManager.Text("common.ok"));
                     StartCodexWebViewLogin(clearSession: true);
                     return;
                 }
@@ -1449,13 +1295,19 @@ public partial class MainPage : ContentPage
 
             _codexAccountManager.AddOrUpdateAccount(codexAccount);
             UpdateCodexDisplayIndices();
-            await DisplayAlertAsync("Success", "OpenAI account successfully added.", "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("messages.openai_account_added_title"),
+                LocalizationManager.Text("messages.openai_account_added"),
+                LocalizationManager.Text("common.ok"));
         }
         catch (Exception ex)
         {
             _isProcessingCodexLogin = false;
             Log.Error("Codex Token Process Error", ex);
-            await DisplayAlertAsync("Login Failed", $"Failed to process Codex token:\n{ex.Message}", "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.login_failed_title"),
+                LocalizationManager.Format("errors.codex_token_failed", ex.Message),
+                LocalizationManager.Text("common.ok"));
         }
     }
 
@@ -1529,141 +1381,124 @@ public partial class MainPage : ContentPage
     private readonly SemaphoreSlim _tokenRefreshSemaphore = new SemaphoreSlim(1, 1);
     // Scheduler Cts per account to allow cancellation/rescheduling
     private readonly Dictionary<string, CancellationTokenSource> _refreshSchedulers = new();
+
+    private RefreshOperation? CreateRefreshOperation(object account, RefreshQueueLevel queueLevel)
+    {
+        return account switch
+        {
+            CloudAccount google => new RefreshOperation(
+                () => google.IsRefreshing,
+                () => google.IsRefreshQueued,
+                value => google.IsRefreshQueued = value,
+                value => google.IsRefreshing = value,
+                () => google.HasError = false,
+                error =>
+                {
+                    google.HasError = true;
+                    google.LastErrorMessage = error.Message;
+                },
+                () => _googleRadar.UpdateAccountDataAsync(google),
+                RetryCount: 3,
+                TimeoutSeconds: 15,
+                DelayForAnimation: true),
+            CodexAccount codex => new RefreshOperation(
+                () => codex.IsRefreshing,
+                () => codex.IsRefreshQueued,
+                value => codex.IsRefreshQueued = value,
+                value => codex.IsRefreshing = value,
+                () => codex.HasError = false,
+                error =>
+                {
+                    codex.HasError = true;
+                    codex.LastErrorMessage = error.Message;
+                },
+                () => UpdateCodexAccountData(codex),
+                RetryCount: 3,
+                TimeoutSeconds: 15,
+                DelayForAnimation: true,
+                RecoverAsync: async error =>
+                {
+                    if (!error.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    await _tokenRefreshSemaphore.WaitAsync();
+                    try
+                    {
+                        await RefreshTokenIfNeededAsync(codex, silent: queueLevel == RefreshQueueLevel.Background);
+                    }
+                    finally
+                    {
+                        _tokenRefreshSemaphore.Release();
+                    }
+
+                    return true;
+                }),
+            CursorAccount cursor => new RefreshOperation(
+                () => cursor.IsRefreshing,
+                () => cursor.IsRefreshQueued,
+                value => cursor.IsRefreshQueued = value,
+                value => cursor.IsRefreshing = value,
+                () => cursor.HasError = false,
+                error =>
+                {
+                    cursor.HasError = true;
+                    cursor.LastErrorMessage = error.Message;
+                },
+                () => UpdateCursorAccountData(cursor),
+                RetryCount: 2,
+                TimeoutSeconds: 10,
+                DelayForAnimation: false),
+            _ => null
+        };
+    }
+
     private async Task EnqueueRefreshAsync(object account, RefreshQueueLevel queueLevel)
     {
-        if (account is CloudAccount g)
-        {
-            if (g.IsRefreshing || g.IsRefreshQueued) return;
-            g.IsRefreshQueued = true;
-            g.HasError = false;
-        }
-        else if (account is CodexAccount c)
-        {
-            if (c.IsRefreshing || c.IsRefreshQueued) return;
-            c.IsRefreshQueued = true;
-            c.HasError = false;
-        }
-        else if (account is CursorAccount r)
-        {
-            if (r.IsRefreshing || r.IsRefreshQueued) return;
-            r.IsRefreshQueued = true;
-            r.HasError = false;
-        }
+        var operation = CreateRefreshOperation(account, queueLevel);
+        if (operation is null || operation.IsRefreshing() || operation.IsQueued())
+            return;
 
-        var providerSemaphore = account switch
-        {
-            CloudAccount => _googleRefreshSemaphore,
-            CursorAccount => _cursorRefreshSemaphore,
-            _ => _codexRefreshSemaphore
-        };
+        operation.SetQueued(true);
+        operation.ClearError();
 
         if (queueLevel == RefreshQueueLevel.Background)
         {
             await Task.Delay(100);
         }
 
-        await _globalRefreshSemaphore.WaitAsync();
-        await providerSemaphore.WaitAsync();
+        using var refreshLease = await _refreshConcurrencyLimiter.AcquireAsync();
         try
         {
-            // Abort if minimized, but clear the queued state
-            if (_isMinimizedToTray) return;
+            if (_isMinimizedToTray)
+                return;
 
-            if (account is CloudAccount googleAcc)
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                MainThread.BeginInvokeOnMainThread(() => {
-                    googleAcc.IsRefreshQueued = false;
-                    googleAcc.IsRefreshing = true;
-                });
-                try
-                {
-                    await Task.Delay(500); // FORCE DELAY TO SEE ANIMATION
-                    await RetryAsync(async () => await _googleRadar.UpdateAccountDataAsync(googleAcc), 3, 15);
-                }
-                catch (Exception ex) { 
-                    MainThread.BeginInvokeOnMainThread(() => {
-                        googleAcc.HasError = true; 
-                        googleAcc.LastErrorMessage = ex.Message; 
-                    });
-                }
-                finally { 
-                    MainThread.BeginInvokeOnMainThread(() => googleAcc.IsRefreshing = false); 
-                }
+                operation.SetQueued(false);
+                operation.SetRefreshing(true);
+            });
+
+            try
+            {
+                if (operation.DelayForAnimation)
+                    await Task.Delay(500);
+
+                await RetryAsync(operation.RefreshAsync, operation.RetryCount, operation.TimeoutSeconds);
             }
-            else if (account is CodexAccount codexAcc)
+            catch (Exception ex)
             {
-                // Use dedicated token refresh semaphore for token-only refreshes.
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    codexAcc.IsRefreshQueued = false;
-                    codexAcc.IsRefreshing = true;
-                });
-                try
-                {
-                    await Task.Delay(500); // FORCE DELAY TO SEE ANIMATION
-                    await RetryAsync(async () => await UpdateCodexAccountData(codexAcc), 3, 15);
-                }
-                catch (Exception ex)
-                {
-                    if (ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await _tokenRefreshSemaphore.WaitAsync();
-                        try
-                        {
-                            await RefreshTokenIfNeededAsync(codexAcc, silent: queueLevel == RefreshQueueLevel.Background);
-                        }
-                        finally
-                        {
-                            _tokenRefreshSemaphore.Release();
-                        }
-                    }
-                    else
-                    {
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            codexAcc.HasError = true;
-                            codexAcc.LastErrorMessage = ex.Message;
-                        });
-                    }
-                }
-                finally
-                {
-                    MainThread.BeginInvokeOnMainThread(() => codexAcc.IsRefreshing = false);
-                }
+                var recovered = operation.RecoverAsync is not null && await operation.RecoverAsync(ex);
+                if (!recovered)
+                    MainThread.BeginInvokeOnMainThread(() => operation.SetError(ex));
             }
-            else if (account is CursorAccount cursorAcc)
+            finally
             {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    cursorAcc.IsRefreshQueued = false;
-                    cursorAcc.IsRefreshing = true;
-                });
-                try
-                {
-                    await RetryAsync(async () => await UpdateCursorAccountData(cursorAcc), 2, 10);
-                }
-                catch (Exception ex)
-                {
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        cursorAcc.HasError = true;
-                        cursorAcc.LastErrorMessage = ex.Message;
-                    });
-                }
-                finally
-                {
-                    MainThread.BeginInvokeOnMainThread(() => cursorAcc.IsRefreshing = false);
-                }
+                MainThread.BeginInvokeOnMainThread(() => operation.SetRefreshing(false));
             }
         }
         finally
         {
-            // Always ensure queued state is cleared
-            if (account is CloudAccount g2) g2.IsRefreshQueued = false;
-            if (account is CodexAccount c2) c2.IsRefreshQueued = false;
-            if (account is CursorAccount r2) r2.IsRefreshQueued = false;
-            providerSemaphore.Release();
-            _globalRefreshSemaphore.Release();
+            MainThread.BeginInvokeOnMainThread(() => operation.SetQueued(false));
         }
     }
 
@@ -1681,14 +1516,9 @@ public partial class MainPage : ContentPage
 
             var tasks = Accounts.Select(acc => EnqueueRefreshAsync(acc, queueLevel)).ToList();
             await Task.WhenAll(tasks);
-            _codexAccountManager.SortAccounts();
-            _cursorAccountManager.SortAccounts();
             _accountManager.SortAccounts();
-
             _ = _accountManager.SaveAccountsAsync();
-            _accountManager.SortAccounts();
             UpdateDisplayIndices();
-            RebuildGoogleAccountRows();
             NotifyStatsChanged();
         }
         catch (Exception ex)
@@ -1787,15 +1617,15 @@ public partial class MainPage : ContentPage
         var rnd = new Random();
         allToRefresh = allToRefresh.OrderBy(_ => rnd.Next()).ToList();
 
-        foreach (var account in allToRefresh)
+        var batchSize = NotificationSettings.MaxConcurrentRefreshes;
+        foreach (var batch in allToRefresh.Chunk(batchSize))
         {
             if (token.IsCancellationRequested) break;
             if (_isShuttingDown) break;
 
-            // Sequential "loose" refresh: one at a time with a delay
-            await EnqueueRefreshAsync(account, RefreshQueueLevel.Background);
+            await Task.WhenAll(batch.Select(account => EnqueueRefreshAsync(account, RefreshQueueLevel.Background)));
             
-            // Wait 5-10 seconds between each account to keep it "loose"
+            // Pause between batches to spread background requests over time.
             await Task.Delay(TimeSpan.FromSeconds(rnd.Next(5, 11)), token);
         }
 
@@ -2084,7 +1914,7 @@ public partial class MainPage : ContentPage
         return (null, null);
     }
 
-    private async void OnRefreshCodexAccountClicked(object? sender, TappedEventArgs e)
+    internal async void OnRefreshCodexAccountClicked(object? sender, TappedEventArgs e)
     {
         if (e.Parameter is CodexAccount account)
         {
@@ -2096,48 +1926,99 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private async void OnErrorIconTapped(object? sender, TappedEventArgs e)
+    internal async void OnErrorIconTapped(object? sender, TappedEventArgs e)
     {
-        string? msg = null;
-        if (e.Parameter is CloudAccount cloud)
-            msg = cloud.LastErrorMessage;
-        else if (e.Parameter is CodexAccount codex)
-            msg = codex.LastErrorMessage;
-
-        if (!string.IsNullOrEmpty(msg))
+        var account = e.Parameter;
+        var provider = account switch
         {
-            string title = "Update Failed";
-            string description = msg;
-            string msgLower = msg.ToLowerInvariant();
+            CloudAccount => "Google",
+            CodexAccount => "Codex",
+            CursorAccount => "Cursor",
+            _ => string.Empty
+        };
+        var msg = account switch
+        {
+            CloudAccount cloud => cloud.LastErrorMessage,
+            CodexAccount codex => codex.LastErrorMessage,
+            CursorAccount cursor => cursor.LastErrorMessage,
+            _ => null
+        };
 
-            if (msgLower.Contains("invalid or zeroed quota data") || msgLower.Contains("all elements are null"))
-            {
-                title = "Server Cache Delay (Stale Data)";
-                description = "The API server temporarily returned expired cache data (all zeros). To protect your existing display data, the update has been paused.\n\nPlease try again by clicking the refresh (↻) button in a few moments.";
-            }
-            else if (msgLower.Contains("invalid_grant") || msgLower.Contains("failed to fetch") || msgLower.Contains("authorization") || msgLower.Contains("unauthorized") || msgLower.Contains("expired"))
-            {
-                title = "Authentication Expired";
-                description = "The account login session has expired or lacks proper authorization.\n\nPlease remove this account using the 'REMOVE ACCOUNT' button, then log in again using the '+ Add Account' button at the top right.";
-            }
-            else if (msgLower.Contains("api error"))
-            {
-                title = "API Server Error";
-                description = "The API server responded with an error. This is usually a temporary backend issue.\n\nPlease try again later.";
-            }
+        if (string.IsNullOrWhiteSpace(msg) || string.IsNullOrEmpty(provider))
+            return;
 
-            await DisplayAlertAsync(title, description, "OK");
+        var title = LocalizationManager.Text("errors.update_failed_title");
+        var description = msg;
+        var msgLower = msg.ToLowerInvariant();
+        var staleCache = msgLower.Contains("invalid or zeroed quota data") || msgLower.Contains("all elements are null");
+        var authenticationExpired = !staleCache && (
+            msgLower.Contains("invalid_grant") ||
+            msgLower.Contains("authorization") ||
+            msgLower.Contains("unauthorized") ||
+            msgLower.Contains("authentication expired") ||
+            msgLower.Contains("token expired") ||
+            msgLower.Contains("session expired") ||
+            msgLower.Contains("expired") ||
+            msgLower.Contains("check session token") ||
+            msgLower.Contains("no refresh token") ||
+            msgLower.Contains("re-login"));
+
+        if (staleCache)
+        {
+            title = LocalizationManager.Text("errors.stale_cache_title");
+            description = LocalizationManager.Format("errors.stale_cache_detail", msg);
+        }
+        else if (authenticationExpired)
+        {
+            title = LocalizationManager.Text("errors.authentication_expired_title");
+            description = LocalizationManager.Format("errors.authentication_expired_detail", provider, msg);
+        }
+        else if (msgLower.Contains("api error"))
+        {
+            title = LocalizationManager.Text("errors.api_server_title");
+            description = LocalizationManager.Format("errors.api_server_detail", msg);
+        }
+
+        if (authenticationExpired)
+        {
+            var shouldReauthenticate = await DisplayAlertAsync(
+                title,
+                $"{description}\n\n{LocalizationManager.Text("errors.reauthenticate_prompt")}",
+                LocalizationManager.Text("common.reauthenticate"),
+                LocalizationManager.Text("common.close"));
+
+            if (shouldReauthenticate && account is not null)
+                await ReauthenticateAccountAsync(account);
+            return;
+        }
+
+        await DisplayAlertAsync(title, description, LocalizationManager.Text("common.ok"));
+    }
+
+    private async Task ReauthenticateAccountAsync(object account)
+    {
+        switch (account)
+        {
+            case CloudAccount:
+                await LoginWithGoogleAsync();
+                break;
+            case CodexAccount:
+                await PromptAddCodexAccount();
+                break;
+            case CursorAccount:
+                await PromptAddCursorAccount();
+                break;
         }
     }
 
-    private async void OnRefreshAccountClicked(object? sender, TappedEventArgs e)
+    internal async void OnRefreshAccountClicked(object? sender, TappedEventArgs e)
     {
         if (e.Parameter is CloudAccount account)
         {
             IsBusy = true;
             await EnqueueRefreshAsync(account, RefreshQueueLevel.Immediate);
-            _ = _accountManager.SaveAccountsAsync();
             _accountManager.SortAccounts();
+            _ = _accountManager.SaveAccountsAsync();
             NotifyStatsChanged();
             IsBusy = false;
         }
@@ -2145,8 +2026,8 @@ public partial class MainPage : ContentPage
         {
             IsBusy = true;
             await EnqueueRefreshAsync(cursorAccount, RefreshQueueLevel.Immediate);
-            _ = _cursorAccountManager.SaveAccountsAsync();
             _cursorAccountManager.SortAccounts();
+            _ = _cursorAccountManager.SaveAccountsAsync();
             NotifyStatsChanged();
             IsBusy = false;
         }
@@ -2157,25 +2038,6 @@ public partial class MainPage : ContentPage
             _ = _codexAccountManager.SaveAccountsAsync();
             NotifyStatsChanged();
             IsBusy = false;
-        }
-    }
-
-    private void OnHideModelClicked(object? sender, TappedEventArgs e)
-    {
-        if (e.Parameter is ModelQuotaInfo modelInfo)
-        {
-            var account = Accounts.FirstOrDefault(a => a.quotas.Contains(modelInfo));
-            if (account != null)
-            {
-                if (!account.HiddenModels.Contains(modelInfo.display_name))
-                {
-                    account.HiddenModels.Add(modelInfo.display_name);
-                    account.NotifyQuotaChanges();
-                    RefreshGoogleAccountRow(account);
-                    _ = _accountManager.SaveAccountsAsync();
-                    NotifyStatsChanged();
-                }
-            }
         }
     }
 
@@ -2191,23 +2053,29 @@ public partial class MainPage : ContentPage
                 : "AIUsageMonitor_codex_accounts.json";
             string json = "";
             if (CurrentTab == "Google")
-                json = JsonSerializer.Serialize(Accounts.ToList());
+                json = JsonFileUtility.Serialize(Accounts.ToList());
             else if (CurrentTab == "Cursor")
-                json = JsonSerializer.Serialize(CursorAccounts.ToList());
+                json = JsonFileUtility.Serialize(CursorAccounts.ToList());
             else
-                json = JsonSerializer.Serialize(CodexAccounts.ToList());
+                json = JsonFileUtility.Serialize(CodexAccounts.ToList());
 
             using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
             var fileSaverResult = await CommunityToolkit.Maui.Storage.FileSaver.Default.SaveAsync(fileName, stream);
             
             if (fileSaverResult.IsSuccessful)
             {
-                await DisplayAlertAsync("Export Success", $"File saved to: {fileSaverResult.FilePath}", "OK");
+                await DisplayAlertAsync(
+                    LocalizationManager.Text("messages.export_success_title"),
+                    LocalizationManager.Format("messages.export_saved", fileSaverResult.FilePath),
+                    LocalizationManager.Text("common.ok"));
             }
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Export Failed", ex.Message, "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.export_failed_title"),
+                ex.Message,
+                LocalizationManager.Text("common.ok"));
         }
     }
 
@@ -2217,7 +2085,7 @@ public partial class MainPage : ContentPage
         {
             var result = await FilePicker.Default.PickAsync(new PickOptions
             {
-                PickerTitle = "Select Accounts JSON",
+                PickerTitle = LocalizationManager.Text("import.picker_title"),
                 FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
                 {
                     { DevicePlatform.WinUI, new[] { ".json" } }
@@ -2230,13 +2098,11 @@ public partial class MainPage : ContentPage
                 {
                     await _accountManager.ImportAccountsAsync(result.FullPath);
                     UpdateDisplayIndices();
-                    RebuildGoogleAccountRows();
                     NotifyStatsChanged();
                 }
                 else if (CurrentTab == "Cursor")
                 {
-                    var json = await File.ReadAllTextAsync(result.FullPath);
-                    var list = JsonSerializer.Deserialize<List<CursorAccount>>(json);
+                    var list = await JsonFileUtility.ReadAsync<List<CursorAccount>>(result.FullPath);
                     if (list != null)
                     {
                         foreach (var acc in list)
@@ -2250,12 +2116,18 @@ public partial class MainPage : ContentPage
                 {
                     await _codexAccountManager.ImportAccountsAsync(result.FullPath);
                 }
-                await DisplayAlertAsync("Import Success", "Accounts imported.", "OK");
+                await DisplayAlertAsync(
+                    LocalizationManager.Text("messages.import_success_title"),
+                    LocalizationManager.Text("messages.accounts_imported"),
+                    LocalizationManager.Text("common.ok"));
             }
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Import Failed", ex.Message, "OK");
+            await DisplayAlertAsync(
+                LocalizationManager.Text("errors.import_failed_title"),
+                ex.Message,
+                LocalizationManager.Text("common.ok"));
         }
     }
 
@@ -2350,35 +2222,100 @@ public partial class MainPage : ContentPage
 
     // Removed UpdateAccountData as it is now in GoogleRadarService
 
-    private async void OnDeleteAccountClicked(object? sender, EventArgs e)
+    private async Task RemoveAccountWithConfirmationAsync<TAccount>(
+        string accountId,
+        IEnumerable<TAccount> accounts,
+        Func<TAccount, string> getId,
+        Func<TAccount, string> getDisplayName,
+        Func<TAccount, string> getDisplayEmail,
+        string provider,
+        Func<string, Task> removeAccount,
+        Action? afterRemove = null)
     {
-        if (sender is Button btn && btn.CommandParameter is string id)
+        if (_isRemovingAccount)
+            return;
+
+        _isRemovingAccount = true;
+        try
         {
-            await _accountManager.RemoveAccountAsync(id);
-            UpdateDisplayIndices();
-            RebuildGoogleAccountRows();
+            var account = accounts.FirstOrDefault(item => getId(item) == accountId);
+            if (account is null)
+                return;
+
+            var displayName = getDisplayName(account);
+            var displayEmail = getDisplayEmail(account);
+            var accountLabel = string.IsNullOrWhiteSpace(displayEmail)
+                ? displayName
+                : $"{displayName}\n{displayEmail}";
+
+            if (!await DisplayAlertAsync(
+                    LocalizationManager.Text("account.remove.confirm_title"),
+                    LocalizationManager.Format("account.remove.confirm_message", provider, accountLabel),
+                    LocalizationManager.Text("common.yes"),
+                    LocalizationManager.Text("common.no")))
+                return;
+
+            await removeAccount(accountId);
+            afterRemove?.Invoke();
             NotifyStatsChanged();
         }
-    }
-
-    private async void OnDeleteCodexAccountClicked(object? sender, EventArgs e)
-    {
-        if (sender is Button btn && btn.CommandParameter is string id)
+        finally
         {
-            await _codexAccountManager.RemoveAccountAsync(id);
+            _isRemovingAccount = false;
         }
     }
 
-    private async void OnDeleteCursorAccountClicked(object? sender, EventArgs e)
+    internal async void OnDeleteAccountClicked(object? sender, EventArgs e)
     {
         if (sender is Button btn && btn.CommandParameter is string id)
         {
-            await _cursorAccountManager.RemoveAccountAsync(id);
-            NotifyStatsChanged();
+            await RemoveAccountWithConfirmationAsync(
+                id,
+                Accounts,
+                account => account.id,
+                account => account.DisplayName,
+                account => account.DisplayEmail,
+                "Google",
+                _accountManager.RemoveAccountAsync,
+                () =>
+                {
+                    UpdateDisplayIndices();
+                });
         }
     }
 
-    private async void OnRenameCursorAccountClicked(object? sender, EventArgs e)
+    internal async void OnDeleteCodexAccountClicked(object? sender, EventArgs e)
+    {
+        if (sender is Button btn && btn.CommandParameter is string id)
+        {
+            await RemoveAccountWithConfirmationAsync(
+                id,
+                CodexAccounts,
+                account => account.id,
+                account => account.DisplayName,
+                account => account.DisplayEmail,
+                "Codex",
+                _codexAccountManager.RemoveAccountAsync,
+                UpdateCodexDisplayIndices);
+        }
+    }
+
+    internal async void OnDeleteCursorAccountClicked(object? sender, EventArgs e)
+    {
+        if (sender is Button btn && btn.CommandParameter is string id)
+        {
+            await RemoveAccountWithConfirmationAsync(
+                id,
+                CursorAccounts,
+                account => account.id,
+                account => account.DisplayName,
+                account => account.DisplayEmail,
+                "Cursor",
+                _cursorAccountManager.RemoveAccountAsync);
+        }
+    }
+
+    internal async void OnRenameCursorAccountClicked(object? sender, EventArgs e)
     {
         if (sender is not Button btn || btn.CommandParameter is not string id)
             return;
@@ -2388,10 +2325,10 @@ public partial class MainPage : ContentPage
             return;
 
         var newName = await DisplayPromptAsync(
-            "Cursor Account",
-            "카드에 표시할 이름을 입력하세요.",
-            "Save",
-            "Cancel",
+            LocalizationManager.Text("account.rename.title"),
+            LocalizationManager.Text("account.rename.prompt"),
+            LocalizationManager.Text("account.rename.save"),
+            LocalizationManager.Text("common.cancel"),
             account.DisplayName,
             maxLength: 80);
 
@@ -2403,49 +2340,26 @@ public partial class MainPage : ContentPage
         NotifyStatsChanged();
     }
 
-    private async void OnOpenCodexSiteClicked(object? sender, EventArgs e)
+    internal async void OnOpenCodexSiteClicked(object? sender, EventArgs e)
     {
         await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://openai.com/codex/");
     }
 
-    private async void OnOpenGitHubSourceClicked(object? sender, EventArgs e)
+    internal async void OnOpenGitHubSourceClicked(object? sender, EventArgs e)
     {
         await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://github.com/wenovaX/AIUsageMonitor");
     }
 
-    private async void OnOpenGitHubReleasesClicked(object? sender, EventArgs e)
+    internal async void OnOpenGitHubReleasesClicked(object? sender, EventArgs e)
     {
         await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync("https://github.com/wenovaX/AIUsageMonitor/releases");
     }
-    private void OnNotificationTriggered(string title, string message)
-    {
-        ShowSystemNotification(title, message);
-    }
-
-    private void ShowSystemNotification(string title, string message)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (_isShuttingDown)
-                return;
-
-            try
-            {
-                TrayIcon.ShowNotification(title, message);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Tray notification failed: {ex.Message}");
-            }
-        });
-    }
-
-    private async void OnSlackTestClicked(object? sender, EventArgs e)
+    internal async void OnSlackTestClicked(object? sender, EventArgs e)
     {
         await _notificationService.SendTestAsync();
     }
 
-    private async void OnOpenSlackApiClicked(object? sender, EventArgs e)
+    internal async void OnOpenSlackApiClicked(object? sender, EventArgs e)
     {
         try
         {
@@ -2457,7 +2371,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private async void OnScheduledTestClicked(object? sender, EventArgs e)
+    internal async void OnScheduledTestClicked(object? sender, EventArgs e)
     {
         await _notificationService.SendScheduledTestAsync();
     }

@@ -1,4 +1,5 @@
 using AIUsageMonitor.Models;
+using AIUsageMonitor.Localization;
 using System.Text.Json;
 
 namespace AIUsageMonitor.Services;
@@ -8,11 +9,8 @@ public class NotificationService
     private const string FileName = "notification_settings.json";
     private readonly string _filePath;
     private readonly HttpClient _httpClient = new();
-    private readonly Dictionary<string, long> _lastNotifiedResetTimes = new();
     private string _lastDigestHash = string.Empty;
     public NotificationSettings Settings { get; private set; } = new();
-
-    public event Action<string, string>? OnNotificationTriggered;
 
     public NotificationService()
     {
@@ -29,8 +27,7 @@ public class NotificationService
         {
             if (File.Exists(_filePath))
             {
-                var json = File.ReadAllText(_filePath);
-                var settings = JsonSerializer.Deserialize<NotificationSettings>(json);
+                var settings = JsonFileUtility.Read<NotificationSettings>(_filePath);
                 if (settings != null) Settings = settings;
             }
         }
@@ -44,47 +41,12 @@ public class NotificationService
     {
         try
         {
-            var json = JsonSerializer.Serialize(Settings);
-            File.WriteAllText(_filePath, json);
+            JsonFileUtility.Write(_filePath, Settings);
         }
         catch (Exception ex)
         {
             Log.Error($"Failed to save notification settings: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Checks the state change of a specific account to determine if a notification should be triggered.
-    /// </summary>
-    public void CheckAndNotify(string provider, string accountName, int oldUsage, int newUsage, bool isReset = false, long resetAt = 0)
-    {
-        string accountKey = $"{provider}_{accountName}";
-
-        if (isReset && Settings.EnableResetNotifications)
-        {
-            // Prevent duplicates: check if we already notified for this reset time
-            if (_lastNotifiedResetTimes.TryGetValue(accountKey, out long lastReset) && lastReset == resetAt)
-                return;
-
-            _lastNotifiedResetTimes[accountKey] = resetAt;
-            TriggerNotification(
-                $"{provider} Account Reset", 
-                $"Account '{accountName}' has been reset and is ready to use!"
-            );
-        }
-        else if (Settings.EnableLimitNotifications && newUsage >= Settings.LimitThresholdPercent && oldUsage < Settings.LimitThresholdPercent)
-        {
-            TriggerNotification(
-                $"{provider} Limit Warning", 
-                $"Account '{accountName}' usage reached {newUsage}%. Time to swap!"
-            );
-        }
-    }
-
-    private void TriggerNotification(string title, string message)
-    {
-        Log.Info($"[NOTIFICATION] {title}: {message}");
-        OnNotificationTriggered?.Invoke(title, message);
     }
 
     /// <summary>
@@ -129,19 +91,19 @@ public class NotificationService
     {
         if (string.IsNullOrWhiteSpace(Settings.SlackWebhookUrl))
         {
-            Settings.SlackStatus = "Error: Webhook URL is empty";
+            Settings.SlackStatus = LocalizationManager.Text("notifications.webhook_empty");
             Settings.SlackStatusColor = Color.FromArgb("#f59e0b"); // Amber 500
             return;
         }
 
         if (!Settings.SlackWebhookUrl.StartsWith("https://hooks.slack.com/"))
         {
-            Settings.SlackStatus = "Error: Invalid Slack Webhook URL format";
+            Settings.SlackStatus = LocalizationManager.Text("notifications.webhook_invalid");
             Settings.SlackStatusColor = Color.FromArgb("#f59e0b"); // Amber 500
             return;
         }
 
-        Settings.SlackStatus = "Sending...";
+        Settings.SlackStatus = LocalizationManager.Text("notifications.sending");
         Settings.SlackStatusColor = Color.FromArgb("#60a5fa"); // Sky 400
         await SendSlackMessageAsync("AIUsageMonitor Test", "✅ Slack integration is working! You will receive alerts here.");
     }
@@ -160,20 +122,20 @@ public class NotificationService
             var response = await _httpClient.PostAsync(Settings.SlackWebhookUrl, content);
             if (response.IsSuccessStatusCode)
             {
-                Settings.SlackStatus = $"Success ({DateTime.Now:HH:mm:ss})";
+                Settings.SlackStatus = LocalizationManager.Format("notifications.sent_at", DateTime.Now.ToString("HH:mm:ss"));
                 Settings.SlackStatusColor = Color.FromArgb("#10b981"); // Emerald 500
             }
             else
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                Settings.SlackStatus = $"Error: {response.StatusCode} ({errorBody})";
+                Settings.SlackStatus = LocalizationManager.Format("notifications.send_error", response.StatusCode, errorBody);
                 Settings.SlackStatusColor = Color.FromArgb("#ef4444"); // Rose 500
                 Log.Error($"Slack Notification Failed: {response.StatusCode} - {errorBody}");
             }
         }
         catch (Exception ex)
         {
-            Settings.SlackStatus = $"Exception: {ex.Message}";
+            Settings.SlackStatus = LocalizationManager.Format("notifications.send_exception", ex.Message);
             Settings.SlackStatusColor = Color.FromArgb("#ef4444"); // Rose 500
             Log.Error($"Slack Error: {ex.Message}");
         }
@@ -222,7 +184,7 @@ public class NotificationService
 
         if (scheduled > 0)
         {
-            Settings.ScheduledStatus = $"Scheduled {scheduled} alert(s) ({DateTime.Now:HH:mm:ss})";
+            Settings.ScheduledStatus = LocalizationManager.Format("notifications.scheduled_count", scheduled, DateTime.Now.ToString("HH:mm:ss"));
             Settings.ScheduledStatusColor = Color.FromArgb("#10b981");
         }
     }
@@ -234,21 +196,21 @@ public class NotificationService
     {
         if (string.IsNullOrWhiteSpace(Settings.SlackBotToken))
         {
-            Settings.ScheduledStatus = "Error: Bot Token is empty";
+            Settings.ScheduledStatus = LocalizationManager.Text("notifications.bot_token_empty");
             Settings.ScheduledStatusColor = Color.FromArgb("#f59e0b");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Settings.SlackChannelId))
         {
-            Settings.ScheduledStatus = "Error: Channel ID is empty";
+            Settings.ScheduledStatus = LocalizationManager.Text("notifications.channel_empty");
             Settings.ScheduledStatusColor = Color.FromArgb("#f59e0b");
             return;
         }
 
         // Schedule test for 1 minute later
         long postAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60;
-        Settings.ScheduledStatus = "Scheduling test (1 min)...";
+        Settings.ScheduledStatus = LocalizationManager.Text("notifications.scheduling_test");
         Settings.ScheduledStatusColor = Color.FromArgb("#60a5fa");
 
         bool success = await ScheduleSlackMessageAsync(
@@ -262,7 +224,7 @@ public class NotificationService
         }
         else
         {
-            Settings.ScheduledStatus = $"Test scheduled for 1 min later ({DateTime.Now:HH:mm:ss})";
+            Settings.ScheduledStatus = LocalizationManager.Format("notifications.scheduled_test", DateTime.Now.ToString("HH:mm:ss"));
             Settings.ScheduledStatusColor = Color.FromArgb("#10b981");
         }
     }
@@ -298,7 +260,7 @@ public class NotificationService
             else
             {
                 string error = doc.RootElement.TryGetProperty("error", out var errProp) ? errProp.GetString() ?? "unknown" : "unknown";
-                Settings.ScheduledStatus = $"Error: {error}";
+                Settings.ScheduledStatus = LocalizationManager.Format("notifications.schedule_error", error);
                 Settings.ScheduledStatusColor = Color.FromArgb("#ef4444");
                 Log.Error($"Slack Schedule Failed: {error}");
                 return false;
@@ -306,7 +268,7 @@ public class NotificationService
         }
         catch (Exception ex)
         {
-            Settings.ScheduledStatus = $"Exception: {ex.Message}";
+            Settings.ScheduledStatus = LocalizationManager.Format("notifications.schedule_exception", ex.Message);
             Settings.ScheduledStatusColor = Color.FromArgb("#ef4444");
             Log.Error($"Slack Schedule Error: {ex.Message}");
             return false;

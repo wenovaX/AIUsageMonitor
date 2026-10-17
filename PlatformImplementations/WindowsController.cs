@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows.Input;
 using AIUsageMonitor.PlatformAbstractions;
+using AIUsageMonitor.Localization;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 #if WINDOWS
@@ -90,7 +91,7 @@ public class WindowsController : BasePlatformController
 
         _showAppMenuItem = new Microsoft.Maui.Controls.MenuFlyoutItem
         {
-            Text = "Show App",
+            Text = LocalizationManager.Text("tray.show_app"),
             Command = showCommand,
             IsEnabled = false
         };
@@ -100,7 +101,7 @@ public class WindowsController : BasePlatformController
         menuFlyout.Add(new Microsoft.Maui.Controls.MenuFlyoutSeparator());
         menuFlyout.Add(new Microsoft.Maui.Controls.MenuFlyoutItem
         {
-            Text = "Exit App",
+            Text = LocalizationManager.Text("tray.exit_app"),
             Command = exitCommand
         });
         FlyoutBase.SetContextFlyout(_trayIcon, menuFlyout);
@@ -214,24 +215,24 @@ public class WindowsController : BasePlatformController
             {
                 var rememberChoiceCheckBox = new Microsoft.UI.Xaml.Controls.CheckBox
                 {
-                    Content = "Remember this choice"
+                    Content = LocalizationManager.Text("window.remember_choice")
                 };
 
                 var panel = new StackPanel { Spacing = 10 };
                 panel.Children.Add(new TextBlock
                 {
-                    Text = "Send the app to the tray and keep it running in the background?",
+                    Text = LocalizationManager.Text("window.close_prompt"),
                     TextWrapping = TextWrapping.Wrap
                 });
                 panel.Children.Add(rememberChoiceCheckBox);
 
                 var dialog = new ContentDialog
                 {
-                    Title = "Close app",
+                    Title = LocalizationManager.Text("window.close_title"),
                     Content = panel,
-                    PrimaryButtonText = "Send to tray",
-                    SecondaryButtonText = "Exit app",
-                    CloseButtonText = "Cancel",
+                    PrimaryButtonText = LocalizationManager.Text("window.send_to_tray"),
+                    SecondaryButtonText = LocalizationManager.Text("window.exit_app"),
+                    CloseButtonText = LocalizationManager.Text("common.cancel"),
                     XamlRoot = _platformWindow.Content.XamlRoot
                 };
 
@@ -398,7 +399,7 @@ public class WindowsController : BasePlatformController
         {
             _trayIcon?.ShowNotification(
                 "AIUsageMonitor",
-                "App is still running in the system tray.",
+                LocalizationManager.Text("tray.background_notification"),
                 NotificationIcon.Info,
                 customIconHandle: null,
                 largeIcon: false,

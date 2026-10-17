@@ -4,10 +4,11 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:AIUsageMonitor"
+    xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
     Title="AIUsageMonitor">
 
     <ShellContent
-        Title="Home"
+        Title="{loc:Loc Key=common.home}"
         ContentTemplate="{DataTemplate local:MainPage}"
         Route="MainPage" />
 

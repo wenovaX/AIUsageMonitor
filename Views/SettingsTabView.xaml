@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MainPageTabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:AIUsageMonitor.Models"
+             xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
+             xmlns:local="clr-namespace:AIUsageMonitor"
+             xmlns:views="clr-namespace:AIUsageMonitor.Views"
+             x:Class="AIUsageMonitor.Views.SettingsTabView" x:Name="TabRoot" x:DataType="local:MainPage">
+        <CollectionView IsVisible="{Binding IsSettingsTab}" ItemsSource="{Binding ModelCatalogSections}" IsGrouped="True" SelectionMode="None" Margin="24,20" MaximumWidthRequest="1080" HorizontalOptions="Center">
+            <CollectionView.Header>
+            <VerticalStackLayout Spacing="24" HorizontalOptions="Fill" Padding="0,8,0,20">
+                <!-- Title -->
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="{loc:Loc Key=settings.title}" FontSize="26" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                    <Label Text="{loc:Loc Key=settings.description}" FontSize="13" TextColor="{StaticResource Slate400}" />
+                </VerticalStackLayout>
+
+                <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" Margin="0,4" />
+
+                <!-- App Behavior -->
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="{loc:Loc Key=settings.app_behavior}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
+
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="18">
+                        <VerticalStackLayout Spacing="16">
+                            <!-- Enable Auto Refresh -->
+                            <Grid ColumnDefinitions="*, Auto">
+                                <VerticalStackLayout VerticalOptions="Center">
+                                    <Label Text="{loc:Loc Key=settings.background_refresh}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                    <Label Text="{loc:Loc Key=settings.background_refresh_detail}" FontSize="12" TextColor="{StaticResource Slate400}" />
+                                </VerticalStackLayout>
+                                <Switch Grid.Column="1" IsToggled="{Binding NotificationSettings.EnableBackgroundRefresh}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                            </Grid>
+
+                            <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" />
+
+                            <!-- Refresh Interval -->
+                            <VerticalStackLayout Spacing="8" IsEnabled="{Binding NotificationSettings.EnableBackgroundRefresh}">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <Label Text="{loc:Loc Key=settings.refresh_interval}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                    <Label Grid.Column="1" Text="{Binding NotificationSettings.RefreshIntervalDisplay}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" />
+                                </Grid>
+                                <Slider Minimum="5" Maximum="120" Value="{Binding NotificationSettings.RefreshIntervalMinutes}" MinimumTrackColor="{StaticResource Emerald500}" />
+                                <Label Text="{loc:Loc Key=settings.refresh_interval_detail}" FontSize="11" TextColor="{StaticResource Slate500}" />
+                            </VerticalStackLayout>
+
+                            <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" />
+
+                            <Grid ColumnDefinitions="*, Auto" ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                                    <Label Text="{loc:Loc Key=settings.refresh_concurrency}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                    <Label Text="{loc:Loc Key=settings.refresh_concurrency_detail}" FontSize="11" TextColor="{StaticResource Slate500}" />
+                                </VerticalStackLayout>
+                                <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                                    <Button Text="-" Clicked="OnDecreaseRefreshConcurrencyClicked" IsEnabled="{Binding NotificationSettings.CanDecreaseMaxConcurrentRefreshes}" Style="{StaticResource ConcurrencyAdjustButtonStyle}" SemanticProperties.Description="{loc:Loc Key=settings.refresh_concurrency_decrease}" ToolTipProperties.Text="{loc:Loc Key=settings.refresh_concurrency_decrease}" />
+                                    <Label Text="{Binding NotificationSettings.MaxConcurrentRefreshesDisplay}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" HorizontalTextAlignment="Center" VerticalTextAlignment="Center" WidthRequest="104" />
+                                    <Button Text="+" Clicked="OnIncreaseRefreshConcurrencyClicked" IsEnabled="{Binding NotificationSettings.CanIncreaseMaxConcurrentRefreshes}" Style="{StaticResource ConcurrencyAdjustButtonStyle}" SemanticProperties.Description="{loc:Loc Key=settings.refresh_concurrency_increase}" ToolTipProperties.Text="{loc:Loc Key=settings.refresh_concurrency_increase}" />
+                                </HorizontalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <!-- Antigravity Models -->
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="{loc:Loc Key=settings.antigravity_models}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
+
+                    <HorizontalStackLayout Spacing="10">
+                        <Button Text="{loc:Loc Key=settings.refresh_models}" Clicked="OnUpdateModelListClicked" Style="{StaticResource UtilityButtonStyle}" Padding="16,0" HeightRequest="36" HorizontalOptions="Start" />
+                        <Button Text="{loc:Loc Key=settings.restore_defaults}" Clicked="OnSetModelListToDefaultClicked" Style="{StaticResource UtilityButtonStyle}" Padding="16,0" HeightRequest="36" HorizontalOptions="Start" />
+                        <Button Text="{loc:Loc Key=settings.clean_missing_models}" Clicked="OnCleanMissingModelsClicked" IsEnabled="{Binding CanCleanMissingModels}" Style="{StaticResource UtilityButtonStyle}" Padding="16,0" HeightRequest="36" HorizontalOptions="Start" />
+                    </HorizontalStackLayout>
+
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+            </CollectionView.Header>
+
+            <CollectionView.GroupHeaderTemplate>
+                <DataTemplate x:DataType="models:ModelCatalogSection">
+                    <Border HorizontalOptions="Fill" BackgroundColor="Transparent" StrokeThickness="0" Padding="8,14,8,6" Margin="0,4,0,0">
+                        <Label Text="{Binding Title}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" />
+                    </Border>
+                </DataTemplate>
+            </CollectionView.GroupHeaderTemplate>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:DiscoveredModelEntry">
+                    <Border HorizontalOptions="Fill" BackgroundColor="{StaticResource Slate800}" Stroke="{StaticResource Slate700}" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="16,8" Margin="0,2">
+                        <Grid ColumnDefinitions="*, Auto" ColumnSpacing="18">
+                            <Label Text="{Binding DisplayName}" FontSize="13" TextColor="{StaticResource Slate50}" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding Enabled}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" IsVisible="{Binding IsAvailable}" />
+                            <Label Grid.Column="1" Text="{loc:Loc Key=settings.model_missing}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Rose500}" VerticalOptions="Center" IsVisible="{Binding IsMissing}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+
+            <CollectionView.Footer>
+                <VerticalStackLayout Spacing="24" HorizontalOptions="Fill" Padding="0,24,0,16">
+
+                <!-- App Settings -->
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="{loc:Loc Key=settings.app_settings}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" CharacterSpacing="1" />
+
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="18">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <Label Text="{loc:Loc Key=settings.minimize_to_tray}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                <Label Text="{loc:Loc Key=settings.minimize_to_tray_detail}" FontSize="12" TextColor="{StaticResource Slate400}" />
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="1" IsToggled="{Binding MinimizeToTray}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="18">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <Label Text="{loc:Loc Key=settings.remember_close_choice}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                <Label Text="{loc:Loc Key=settings.remember_close_choice_detail}" FontSize="12" TextColor="{StaticResource Slate400}" />
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="1" IsToggled="{Binding RememberCloseChoice}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="18">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <Label Text="{loc:Loc Key=settings.language}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                <Label Text="{loc:Loc Key=settings.language_detail}" FontSize="12" TextColor="{StaticResource Slate400}" />
+                            </VerticalStackLayout>
+                            <Picker Grid.Column="1" ItemsSource="{Binding LanguageOptions}" SelectedIndex="{Binding LanguageSelectionIndex, Mode=OneWay}" SelectedIndexChanged="OnLanguageSelectionChanged" TextColor="{StaticResource Slate50}" BackgroundColor="{StaticResource Slate700}" WidthRequest="170" VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="18">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout VerticalOptions="Center" Spacing="4">
+                                <Label Text="{loc:Loc Key=settings.cursor_storage_folder}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                <Label Text="{Binding CursorStoragePath}" FontSize="11" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+                            <Button Grid.Column="1" Text="{loc:Loc Key=settings.open_folder}" Clicked="OnOpenCursorStorageFolderClicked" Style="{StaticResource UtilityButtonStyle}" VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </CollectionView.Footer>
+        </CollectionView>
+</views:MainPageTabView>

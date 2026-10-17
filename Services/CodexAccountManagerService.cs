@@ -27,29 +27,17 @@ public class CodexAccountManagerService
         if (!File.Exists(_filePath)) return;
         try
         {
-            var json = await File.ReadAllTextAsync(_filePath);
-            var list = JsonSerializer.Deserialize<List<CodexAccount>>(json);
+            var json = await JsonFileUtility.ReadTextAsync(_filePath);
+            var list = JsonFileUtility.Deserialize<List<CodexAccount>>(json);
             if (list != null)
             {
                 using var doc = JsonDocument.Parse(json);
                 Accounts.Clear();
                 foreach (var acc in list)
                 {
-                    string? oldAccess = null;
-                    string? oldRefresh = null;
-                    
-                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var element in doc.RootElement.EnumerateArray())
-                        {
-                            if (element.TryGetProperty("id", out var idProp) && idProp.GetString() == acc.id)
-                            {
-                                oldAccess = element.TryGetProperty("access_token", out var aProp) ? aProp.GetString() : null;
-                                oldRefresh = element.TryGetProperty("refresh_token", out var rProp) ? rProp.GetString() : null;
-                                break;
-                            }
-                        }
-                    }
+                    var legacyTokens = LegacyAccountTokenReader.FindForAccount(doc.RootElement, acc.id);
+                    var oldAccess = legacyTokens.AccessToken;
+                    var oldRefresh = legacyTokens.RefreshToken;
 
                     // Migration logic
                     var (storedAccess, storedRefresh, _) = await _tokenStorage.LoadTokensAsync(acc.id);
@@ -105,8 +93,7 @@ public class CodexAccountManagerService
                 await _tokenStorage.SaveTokensAsync(acc.id, acc.access_token, acc.refresh_token, expiresInSeconds);
             }
 
-            var json = JsonSerializer.Serialize(Accounts.ToList());
-            await File.WriteAllTextAsync(_filePath, json);
+            await JsonFileUtility.WriteAsync(_filePath, Accounts.ToList());
         }
         catch (Exception ex)
         {
@@ -159,8 +146,8 @@ public class CodexAccountManagerService
             account.last_updated = DateTime.Now;
             Accounts.Add(account);
         }
-        _ = SaveAccountsAsync();
         SortAccounts();
+        _ = SaveAccountsAsync();
     }
 
     public CodexAccount? FindMatchingAccount(CodexAccount account) =>
@@ -197,7 +184,8 @@ public class CodexAccountManagerService
     /// </summary>
     public void SortAccounts()
     {
-        if (Accounts.Count <= 1) return;
+        if (Accounts.Count <= 1)
+            return;
 
         // 1. Get a sorted list
         var sorted = Accounts.OrderBy(a => GetTierPriority(a.plan_type))
@@ -214,8 +202,6 @@ public class CodexAccountManagerService
                 Accounts.Move(oldIndex, i);
             }
         }
-
-        _ = SaveAccountsAsync();
     }
 
     private int GetTierPriority(string? planType)
@@ -253,51 +239,24 @@ public class CodexAccountManagerService
     }
 
     /// <summary>
-    /// Exports all OpenAI/Codex accounts to a JSON file at the specified path.
-    /// </summary>
-    public async Task ExportAccountsAsync(string targetPath)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(Accounts.ToList());
-            await File.WriteAllTextAsync(targetPath, json);
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Failed to export codex accounts", ex);
-            throw;
-        }
-    }
-
-    /// <summary>
     /// Imports OpenAI/Codex accounts from a JSON file at the specified path.
     /// </summary>
     public async Task ImportAccountsAsync(string sourcePath)
     {
         try
         {
-            var json = await File.ReadAllTextAsync(sourcePath);
-            var list = JsonSerializer.Deserialize<List<CodexAccount>>(json);
+            var json = await JsonFileUtility.ReadTextAsync(sourcePath);
+            var list = JsonFileUtility.Deserialize<List<CodexAccount>>(json);
             if (list != null)
             {
                 using var doc = JsonDocument.Parse(json);
                 foreach (var acc in list)
                 {
-                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var element in doc.RootElement.EnumerateArray())
-                        {
-                            if (element.TryGetProperty("id", out var idProp) && idProp.GetString() == acc.id)
-                            {
-                                var oldAccess = element.TryGetProperty("access_token", out var aProp) ? aProp.GetString() : null;
-                                var oldRefresh = element.TryGetProperty("refresh_token", out var rProp) ? rProp.GetString() : null;
-                                
-                                if (!string.IsNullOrEmpty(oldAccess)) acc.access_token = oldAccess;
-                                if (!string.IsNullOrEmpty(oldRefresh)) acc.refresh_token = oldRefresh;
-                                break;
-                            }
-                        }
-                    }
+                    var legacyTokens = LegacyAccountTokenReader.FindForAccount(doc.RootElement, acc.id);
+                    if (!string.IsNullOrEmpty(legacyTokens.AccessToken))
+                        acc.access_token = legacyTokens.AccessToken;
+                    if (!string.IsNullOrEmpty(legacyTokens.RefreshToken))
+                        acc.refresh_token = legacyTokens.RefreshToken;
                     AddOrUpdateAccount(acc);
                 }
             }

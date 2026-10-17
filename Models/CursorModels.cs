@@ -1,12 +1,13 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using AIUsageMonitor.Localization;
 
 namespace AIUsageMonitor.Models;
 
 public class CursorAccount : INotifyPropertyChanged
 {
-    private string _name = "Cursor Account";
+    private string _name = string.Empty;
     private string _email = "";
     private string _sessionToken = "";
     private string _loginEmail = "";
@@ -152,22 +153,22 @@ public class CursorAccount : INotifyPropertyChanged
         set { _lastErrorMessage = value; OnPropertyChanged(); }
     }
 
-    public string DisplayName => string.IsNullOrWhiteSpace(name) ? "Cursor Account" : name;
+    public string DisplayName => string.IsNullOrWhiteSpace(name) ? LocalizationManager.Text("cursor.account_default") : name;
     public string DisplayEmail => string.IsNullOrWhiteSpace(email) ? "cursor.sh" : email;
     public int MonthlyRemaining => Math.Max(0, monthly_limit - monthly_used);
     public int MonthlyUsedPercent => monthly_limit <= 0 ? 0 : Math.Min(100, (int)Math.Round(monthly_used * 100.0 / monthly_limit));
     public string MonthlyDisplay => $"{monthly_used}/{monthly_limit}";
-    public string RemainingDisplay => $"{MonthlyRemaining} left";
+    public string RemainingDisplay => LocalizationManager.Format("cursor.monthly_remaining", MonthlyRemaining);
     public double ContextUsageProgress => context_usage_percent / 100.0;
     public string ContextUsageDisplay => $"{context_usage_percent:F1}%";
-    public string ContextRemainingDisplay => $"{Math.Max(0, 100 - context_usage_percent):F1}% left";
+    public string ContextRemainingDisplay => LocalizationManager.Format("cursor.context_remaining", Math.Max(0, 100 - context_usage_percent));
     public string ContextTitle => string.IsNullOrWhiteSpace(context_composer_name)
-        ? "Context Usage"
-        : $"Context Usage - {context_composer_name}";
+        ? LocalizationManager.Text("cursor.context_usage")
+        : LocalizationManager.Format("cursor.context_usage_named", context_composer_name);
     public string ContextResetDisplay => context_reset_date.HasValue
-        ? $"Reset {context_reset_date.Value.ToLocalTime():MM/dd HH:mm}"
-        : "Reset unknown";
-    public string ContextStatusDisplay => context_bottom_hit ? "Bottom hit" : "Tracking";
+        ? LocalizationManager.Format("cursor.reset_time", context_reset_date.Value.ToLocalTime().ToString("MM/dd HH:mm"))
+        : LocalizationManager.Text("cursor.reset_unknown");
+    public string ContextStatusDisplay => LocalizationManager.Text(context_bottom_hit ? "cursor.bottom_hit" : "cursor.tracking");
 
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

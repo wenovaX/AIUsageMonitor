@@ -25,7 +25,6 @@ public class CloudAccount : INotifyPropertyChanged
     private bool _isRefreshQueued;
     private bool _hasError;
     private bool _hasAvatarImage;
-    private double _cardHeightHint = 320;
     private ImageSource? _avatarImageSource;
     private int _avatarLoadVersion;
 
@@ -137,17 +136,6 @@ public class CloudAccount : INotifyPropertyChanged
         private set
         {
             _hasAvatarImage = value;
-            OnPropertyChanged();
-        }
-    }
-
-    [JsonIgnore]
-    public double CardHeightHint
-    {
-        get => _cardHeightHint;
-        set
-        {
-            _cardHeightHint = value;
             OnPropertyChanged();
         }
     }
@@ -348,11 +336,6 @@ public class CloudAccount : INotifyPropertyChanged
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 AIUsageMonitor");
         return client;
     }
-}
-
-public class GoogleAccountRow
-{
-    public ObservableCollection<CloudAccount> Accounts { get; } = new();
 }
 
 public class ModelVisibilityItem : INotifyPropertyChanged

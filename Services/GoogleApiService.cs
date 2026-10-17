@@ -43,7 +43,7 @@ public class GoogleApiService
     /// <summary>
     /// Generates the Google OAuth 2.0 authorization URL using predefined scopes.
     /// </summary>
-    public string GetAuthUrl(string redirectUri)
+    public string GetAuthUrl(string redirectUri, string state)
     {
         var scopes = new[]
         {
@@ -61,6 +61,7 @@ public class GoogleApiService
                $"scope={Uri.EscapeDataString(string.Join(" ", scopes))}&" +
                $"access_type=offline&" +
                $"prompt=consent&" +
+               $"state={Uri.EscapeDataString(state)}&" +
                $"include_granted_scopes=true";
     }
 

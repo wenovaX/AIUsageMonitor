@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:AIUsageMonitor.Controls"
+             xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
+             x:Class="AIUsageMonitor.Controls.AccountCardHeaderView"
+             x:Name="Root"
+             x:DataType="local:AccountCardHeaderView">
+    <Grid ColumnDefinitions="30,*,Auto" Padding="14,12">
+        <Border HeightRequest="30" WidthRequest="30" StrokeShape="RoundRectangle 15" StrokeThickness="0" BackgroundColor="{StaticResource Slate700}">
+            <Grid>
+                <Image Source="{Binding AvatarImageSource, Source={x:Reference Root}}" Aspect="AspectFill" IsVisible="{Binding ShouldShowAvatarImage, Source={x:Reference Root}}" />
+                <Label Text="{Binding AvatarText, Source={x:Reference Root}}" TextColor="{StaticResource Slate100}" HorizontalOptions="Center" VerticalOptions="Center" FontAttributes="Bold" FontSize="11" IsVisible="{Binding ShouldShowAvatarFallback, Source={x:Reference Root}}" />
+            </Grid>
+        </Border>
+        <VerticalStackLayout Grid.Column="1" Margin="10,0,0,0" VerticalOptions="Center">
+            <Label Text="{Binding DisplayName, Source={x:Reference Root}}" FontAttributes="Bold" FontSize="12" TextColor="{StaticResource Slate50}" LineBreakMode="TailTruncation" />
+            <Label Text="{Binding DisplayEmail, Source={x:Reference Root}}" FontSize="9" TextColor="{StaticResource Slate400}" LineBreakMode="TailTruncation" IsVisible="{Binding IsEmailVisible, Source={x:Reference Root}}" />
+        </VerticalStackLayout>
+        <HorizontalStackLayout Grid.Column="2" Spacing="5" VerticalOptions="Center">
+            <Label Text="{loc:Loc Key=dashboard.waiting}" TextColor="{StaticResource Slate400}" FontSize="10" FontAttributes="Bold" IsVisible="{Binding IsRefreshQueued, Source={x:Reference Root}}" VerticalOptions="Center" />
+            <ActivityIndicator IsRunning="{Binding IsRefreshing, Source={x:Reference Root}}" IsVisible="{Binding IsRefreshing, Source={x:Reference Root}}" Color="{StaticResource Emerald500}" WidthRequest="16" HeightRequest="16" />
+            <Border Style="{StaticResource ErrorButtonStyle}" IsVisible="{Binding HasError, Source={x:Reference Root}}" ToolTipProperties.Text="{loc:Loc Key=dashboard.error_details_tooltip}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnErrorIconTapped" CommandParameter="{Binding Account, Source={x:Reference Root}}" />
+                </Border.GestureRecognizers>
+                <Label Text="⚠" TextColor="{StaticResource Rose500}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+        </HorizontalStackLayout>
+    </Grid>
+</ContentView>

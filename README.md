@@ -16,7 +16,7 @@ Multi-account tools kept logging sessions out,<br>
 making manual sign-in unavoidable anyway.<br>
 That experience is why this project focuses on monitoring.
 
-[한국어 README](README.kr.md) · [Developer notes](DEVELOPMENT.md)
+[한국어 README](README.kr.md) · [Developer notes](DEVELOPMENT.md) · [Release notes](RELEASE_NOTES.md)
 
 ## What It Shows
 
@@ -24,6 +24,7 @@ That experience is why this project focuses on monitoring.
 - Codex usage limits and reset windows
 - Cursor usage and local Composer context state
 - Multiple accounts in one Windows dashboard
+- Responsive, virtualized account lists for larger account sets
 - Manual, queued, and background refresh
 - Tray and optional Slack notifications
 - Anonymous mode for screen sharing
@@ -78,7 +79,7 @@ self-contained single executable and a versioned release zip:
 ```text
 build/Release_yyyyMMdd_HHmmss/
   AIUsageMonitor.exe
-  AIUsageMonitor-v1.0.9-win-x64-single-file-yyyyMMdd_HHmmss.zip
+  AIUsageMonitor-v1.1.0-win-x64-single-file-yyyyMMdd_HHmmss.zip
 ```
 
 The zip contains only `AIUsageMonitor.exe`.

@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MainPageTabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
+             xmlns:local="clr-namespace:AIUsageMonitor"
+             xmlns:views="clr-namespace:AIUsageMonitor.Views"
+             x:Class="AIUsageMonitor.Views.NotificationsTabView" x:Name="TabRoot" x:DataType="local:MainPage">
+        <ScrollView IsVisible="{Binding IsNotificationsTab}" Padding="20">
+            <VerticalStackLayout Spacing="25" MaximumWidthRequest="800" HorizontalOptions="Center">
+                <!-- Title -->
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="{loc:Loc Key=notifications.title}" FontSize="28" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                    <Label Text="{loc:Loc Key=notifications.description}" FontSize="13" TextColor="{StaticResource Slate400}" />
+                </VerticalStackLayout>
+
+                <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" />
+
+                <!-- Slack Integration -->
+                <Label Text="{loc:Loc Key=notifications.external_integration}" FontSize="16" FontAttributes="Bold" TextColor="{StaticResource Slate100}" Margin="0,10,0,0" />
+
+                <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="20">
+                    <VerticalStackLayout Spacing="20">
+                        <!-- Slack Switch -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <Label Text="{loc:Loc Key=notifications.slack_title}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                <Label Text="{loc:Loc Key=notifications.slack_description}" FontSize="12" TextColor="{StaticResource Slate400}" />
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="1" IsToggled="{Binding NotificationSettings.EnableSlackNotifications}" OnColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                        </Grid>
+
+                        <VerticalStackLayout Spacing="15" IsVisible="{Binding NotificationSettings.EnableSlackNotifications}">
+                            <!-- Mission Guide -->
+                            <Border BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15" StrokeShape="RoundRectangle 8">
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="{loc:Loc Key=notifications.webhook_mission}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource Sky400}" />
+
+                                    <Label Text="{loc:Loc Key=common.step_1}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                    <Label Text="{loc:Loc Key=notifications.webhook_step_1}" FontSize="12" TextColor="{StaticResource Slate300}" />
+                                    <Button Text="{loc:Loc Key=notifications.open_slack_api}" Clicked="OnOpenSlackApiClicked" Style="{StaticResource UtilityButtonStyle}"
+                                            TextColor="{StaticResource Sky400}"
+                                            FontSize="11" FontAttributes="Bold" HeightRequest="30" Padding="14,0"
+                                            HorizontalOptions="Start" />
+
+                                    <Label Text="{loc:Loc Key=common.step_2}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" Margin="0,5,0,0" />
+                                    <Label Text="{loc:Loc Key=notifications.webhook_step_2}" FontSize="12" TextColor="{StaticResource Slate300}" />
+
+                                    <Label Text="{loc:Loc Key=common.step_3}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" Margin="0,5,0,0" />
+                                    <Label Text="{loc:Loc Key=notifications.webhook_step_3}" FontSize="12" TextColor="{StaticResource Slate300}" />
+
+                                    <Label Text="{loc:Loc Key=common.step_4}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" Margin="0,5,0,0" />
+                                    <Label Text="{loc:Loc Key=notifications.webhook_step_4}" FontSize="12" TextColor="{StaticResource Slate300}" />
+
+                                    <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" Margin="0,5" />
+
+                                    <Label Text="{loc:Loc Key=notifications.how_it_works}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                    <Label Text="{loc:Loc Key=notifications.webhook_help}" FontSize="11" TextColor="{StaticResource Slate500}" LineBreakMode="WordWrap" />
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <!-- Webhook Input -->
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="{loc:Loc Key=notifications.webhook_url}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                <Border BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="10,2" StrokeShape="RoundRectangle 6">
+                                    <Entry Text="{Binding NotificationSettings.SlackWebhookUrl}"
+                                           Placeholder="https://hooks.slack.com/services/..."
+                                           TextColor="{StaticResource Slate50}"
+                                           FontSize="13"
+                                           BackgroundColor="Transparent" />
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <!-- Status & Test -->
+                            <Grid ColumnDefinitions="*, Auto">
+                                <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                    <BoxView WidthRequest="8" HeightRequest="8"
+                                             BackgroundColor="{Binding NotificationSettings.SlackStatusColor}"
+                                             CornerRadius="4" VerticalOptions="Center" />
+                                    <Label Text="{Binding NotificationSettings.SlackStatus}"
+                                           FontSize="11" TextColor="{Binding NotificationSettings.SlackStatusColor}"
+                                           VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                                <Button Grid.Column="1" Text="{loc:Loc Key=notifications.send_test}"
+                                        Clicked="OnSlackTestClicked" Style="{StaticResource UtilityButtonStyle}"
+                                        TextColor="{StaticResource Sky400}"
+                                        FontSize="11" FontAttributes="Bold"
+                                        HeightRequest="30" Padding="12,0" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Scheduled Reset Alerts (Bot Token) -->
+                <Label Text="{loc:Loc Key=notifications.scheduled_title}" FontSize="16" FontAttributes="Bold" TextColor="{StaticResource Slate100}" Margin="0,10,0,0" />
+                <Label Text="{loc:Loc Key=notifications.scheduled_description}" FontSize="12" TextColor="{StaticResource Slate400}" />
+
+                <Border BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="20">
+                    <VerticalStackLayout Spacing="20">
+                        <!-- Enable Toggle -->
+                        <Grid ColumnDefinitions="*, Auto">
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <Label Text="{loc:Loc Key=notifications.enable_scheduled}" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                <Label Text="{loc:Loc Key=notifications.enable_scheduled_detail}" FontSize="12" TextColor="{StaticResource Slate400}" />
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="1" IsToggled="{Binding NotificationSettings.EnableScheduledAlerts}" OnColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                        </Grid>
+
+                        <VerticalStackLayout Spacing="15" IsVisible="{Binding NotificationSettings.EnableScheduledAlerts}">
+                            <!-- Mission Guide for Bot Token -->
+                            <Border BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="15" StrokeShape="RoundRectangle 8">
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="{loc:Loc Key=notifications.bot_mission}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" />
+
+                                    <Label Text="{loc:Loc Key=common.step_1}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" />
+                                    <Label Text="{loc:Loc Key=notifications.bot_step_1}" FontSize="12" TextColor="{StaticResource Slate300}" />
+                                    <Button Text="{loc:Loc Key=notifications.open_slack_api}" Clicked="OnOpenSlackApiClicked" Style="{StaticResource UtilityButtonStyle}"
+                                            TextColor="{StaticResource Sky400}"
+                                            FontSize="11" FontAttributes="Bold" HeightRequest="30" Padding="14,0"
+                                            HorizontalOptions="Start" />
+
+                                    <Label Text="{loc:Loc Key=common.step_2}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" Margin="0,5,0,0" />
+                                    <Label Text="{loc:Loc Key=notifications.bot_step_2}" FontSize="12" TextColor="{StaticResource Slate300}" />
+                                    <Label Text="{loc:Loc Key=notifications.bot_step_2_detail}" FontSize="12" TextColor="{StaticResource Slate300}" />
+
+                                    <Label Text="{loc:Loc Key=common.step_3}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" Margin="0,5,0,0" />
+                                    <Label Text="{loc:Loc Key=notifications.bot_step_3}" FontSize="12" TextColor="{StaticResource Slate300}" />
+                                    <Label Text="{loc:Loc Key=notifications.bot_step_3_detail}" FontSize="12" TextColor="{StaticResource Slate300}" />
+
+                                    <Label Text="{loc:Loc Key=common.step_4}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate50}" Margin="0,5,0,0" />
+                                    <Label Text="{loc:Loc Key=notifications.bot_step_4}" FontSize="12" TextColor="{StaticResource Slate300}" LineBreakMode="WordWrap" />
+
+                                    <BoxView HeightRequest="1" BackgroundColor="{StaticResource Slate700}" Margin="0,5" />
+                                    <Label Text="{loc:Loc Key=notifications.scheduled_help}" FontSize="11" TextColor="{StaticResource Slate500}" LineBreakMode="WordWrap" />
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <!-- Bot Token Input -->
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="{loc:Loc Key=notifications.bot_token}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                <Border BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="10,2" StrokeShape="RoundRectangle 6">
+                                    <Entry Text="{Binding NotificationSettings.SlackBotToken}"
+                                           Placeholder="xoxb-..." IsPassword="True"
+                                           TextColor="{StaticResource Slate50}" FontSize="13" BackgroundColor="Transparent" />
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <!-- Channel ID Input -->
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="{loc:Loc Key=notifications.channel_id}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Slate400}" />
+                                <Border BackgroundColor="{StaticResource Slate900}" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="10,2" StrokeShape="RoundRectangle 6">
+                                    <Entry Text="{Binding NotificationSettings.SlackChannelId}"
+                                           Placeholder="C0XXXXXXXXX"
+                                           TextColor="{StaticResource Slate50}" FontSize="13" BackgroundColor="Transparent" />
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <!-- Status & Test -->
+                            <Grid ColumnDefinitions="*, Auto">
+                                <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                    <BoxView WidthRequest="8" HeightRequest="8"
+                                             BackgroundColor="{Binding NotificationSettings.ScheduledStatusColor}"
+                                             CornerRadius="4" VerticalOptions="Center" />
+                                    <Label Text="{Binding NotificationSettings.ScheduledStatus}"
+                                           FontSize="11" TextColor="{Binding NotificationSettings.ScheduledStatusColor}"
+                                           VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                                <Button Grid.Column="1" Text="{loc:Loc Key=notifications.schedule_test}"
+                                        Clicked="OnScheduledTestClicked" Style="{StaticResource UtilityButtonStyle}"
+                                        TextColor="{StaticResource Emerald500}"
+                                        FontSize="11" FontAttributes="Bold"
+                                        HeightRequest="30" Padding="12,0" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+</views:MainPageTabView>

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIUsageMonitor.Localization;
 using System.Text.Json.Serialization;
 
 namespace AIUsageMonitor.Services;
@@ -182,7 +183,7 @@ public class CodexApiService
 		var resetTime = DateTimeOffset.FromUnixTimeSeconds(unixTimestamp).LocalDateTime;
 		var remaining = resetTime - DateTime.Now;
 
-		if (remaining.TotalMinutes < 1) return "now";
+		if (remaining.TotalMinutes < 1) return LocalizationManager.Text("codex.now");
 		if (remaining.TotalHours < 1) return $"{(int)remaining.TotalMinutes}m";
 		if (remaining.TotalHours < 24) return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
 		return $"{(int)remaining.TotalDays}d {remaining.Hours}h";
@@ -194,7 +195,7 @@ public class CodexApiService
 	public static string FormatWindowName(int windowSeconds)
 	{
 		var hours = windowSeconds / 3600;
-		if (hours >= 168) return "Weekly";
+		if (hours >= 168) return "Weekly"; // This value is also used by rate-limit classification.
 		if (hours >= 24) return $"{hours / 24}d";
 		return $"{hours}h";
 	}

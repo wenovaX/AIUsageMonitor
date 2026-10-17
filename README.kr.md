@@ -14,7 +14,7 @@ AIUsageMonitor에서는 계정별 쿼터와 상태만 한 화면에서 확인합
 결국 매번 수동 로그인하게 된 경험에서 시작했습니다.<br>
 그래서 로그인 자동화보다 쿼터 모니터링에 집중합니다.
 
-[English README](README.md) · [개발자 문서](DEVELOPMENT.kr.md)
+[English README](README.md) · [개발자 문서](DEVELOPMENT.kr.md) · [릴리즈 노트](RELEASE_NOTES.md)
 
 ## 확인할 수 있는 것
 
@@ -22,6 +22,7 @@ AIUsageMonitor에서는 계정별 쿼터와 상태만 한 화면에서 확인합
 - Codex 사용 한도와 리셋 시간
 - Cursor 사용량과 로컬 Composer 컨텍스트 상태
 - 여러 계정을 모아 보는 Windows 대시보드
+- 계정이 많아도 원활하게 표시하는 반응형 가상화 목록
 - 수동·대기열·백그라운드 새로고침
 - 트레이 및 선택형 Slack 알림
 - 화면 공유용 익명 모드
@@ -76,7 +77,7 @@ dotnet build AIUsageMonitor.csproj -f net10.0-windows10.0.19041.0 -c Release
 ```text
 build/Release_yyyyMMdd_HHmmss/
   AIUsageMonitor.exe
-  AIUsageMonitor-v1.0.9-win-x64-single-file-yyyyMMdd_HHmmss.zip
+  AIUsageMonitor-v1.1.0-win-x64-single-file-yyyyMMdd_HHmmss.zip
 ```
 
 zip 안에는 `AIUsageMonitor.exe` 하나만 들어갑니다.

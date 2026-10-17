@@ -1,7 +1,4 @@
 using Microsoft.Maui.Storage;
-using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace AIUsageMonitor.Services;
@@ -11,6 +8,7 @@ public class TokenStorageService
     private const string AccessTokenSuffix = "_access_token";
     private const string RefreshTokenSuffix = "_refresh_token";
     private const string FileName = "tokens.json";
+    private const string ProtectionPurpose = "AIUsageMonitor.Tokens.v1";
     private readonly string _filePath = AppDataPaths.GetDataFilePath(FileName);
     private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
 
@@ -35,8 +33,8 @@ public class TokenStorageService
             var tokens = await LoadStoreAsync();
             tokens[accountId] = new StoredTokenSet
             {
-                AccessToken = Protect(accessToken),
-                RefreshToken = Protect(refreshToken),
+                AccessToken = LocalDataProtector.Protect(accessToken, ProtectionPurpose),
+                RefreshToken = LocalDataProtector.Protect(refreshToken, ProtectionPurpose),
                 ExpiresAt = expiresInSeconds.HasValue
                     ? DateTime.UtcNow.AddSeconds(expiresInSeconds.Value)
                     : null
@@ -67,7 +65,10 @@ public class TokenStorageService
             var tokens = await LoadStoreAsync();
             if (tokens.TryGetValue(accountId, out var stored))
             {
-                return (Unprotect(stored.AccessToken), Unprotect(stored.RefreshToken), stored.ExpiresAt);
+                return (
+                    LocalDataProtector.Unprotect(stored.AccessToken, ProtectionPurpose),
+                    LocalDataProtector.Unprotect(stored.RefreshToken, ProtectionPurpose),
+                    stored.ExpiresAt);
             }
 
             var legacy = await LoadLegacySecureStorageTokensAsync(accountId);
@@ -75,8 +76,8 @@ public class TokenStorageService
             {
                 tokens[accountId] = new StoredTokenSet
                 {
-                    AccessToken = Protect(legacy.AccessToken),
-                    RefreshToken = Protect(legacy.RefreshToken),
+                    AccessToken = LocalDataProtector.Protect(legacy.AccessToken, ProtectionPurpose),
+                    RefreshToken = LocalDataProtector.Protect(legacy.RefreshToken, ProtectionPurpose),
                     ExpiresAt = legacy.ExpiresAt
                 };
                 await SaveStoreAsync(tokens);
@@ -127,15 +128,16 @@ public class TokenStorageService
         if (!File.Exists(_filePath))
             return new Dictionary<string, StoredTokenSet>();
 
-        var json = await File.ReadAllTextAsync(_filePath);
-        return JsonSerializer.Deserialize<Dictionary<string, StoredTokenSet>>(json)
+        return await JsonFileUtility.ReadAsync<Dictionary<string, StoredTokenSet>>(_filePath)
             ?? new Dictionary<string, StoredTokenSet>();
     }
 
     private async Task SaveStoreAsync(Dictionary<string, StoredTokenSet> tokens)
     {
-        var json = JsonSerializer.Serialize(tokens, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(_filePath, json);
+        await JsonFileUtility.WriteAsync(
+            _filePath,
+            tokens,
+            new JsonSerializerOptions { WriteIndented = true });
     }
 
     private async Task<(string? AccessToken, string? RefreshToken, DateTime? ExpiresAt)> LoadLegacySecureStorageTokensAsync(string accountId)
@@ -159,54 +161,6 @@ public class TokenStorageService
         SecureStorage.Default.Remove($"{accountId}{AccessTokenSuffix}");
         SecureStorage.Default.Remove($"{accountId}{RefreshTokenSuffix}");
         SecureStorage.Default.Remove($"{accountId}_expires_at");
-    }
-
-    private static string Protect(string? plain)
-    {
-        if (string.IsNullOrWhiteSpace(plain))
-            return string.Empty;
-
-        using var aes = Aes.Create();
-        aes.Key = GetStableKey();
-        aes.GenerateIV();
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
-
-        using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-        var plainBytes = Encoding.UTF8.GetBytes(plain);
-        var cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
-
-        return $"enc1:{Convert.ToBase64String(aes.IV)}:{Convert.ToBase64String(cipherBytes)}";
-    }
-
-    private static string Unprotect(string? cipher)
-    {
-        if (string.IsNullOrWhiteSpace(cipher))
-            return string.Empty;
-
-        if (!cipher.StartsWith("enc1:", StringComparison.Ordinal))
-            return cipher;
-
-        var parts = cipher.Split(':');
-        if (parts.Length != 3)
-            return cipher;
-
-        using var aes = Aes.Create();
-        aes.Key = GetStableKey();
-        aes.IV = Convert.FromBase64String(parts[1]);
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
-
-        using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-        var encrypted = Convert.FromBase64String(parts[2]);
-        var plainBytes = decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
-        return Encoding.UTF8.GetString(plainBytes);
-    }
-
-    private static byte[] GetStableKey()
-    {
-        var source = $"{Environment.MachineName}|{Environment.UserName}|AIUsageMonitor.Tokens.v1";
-        return SHA256.HashData(Encoding.UTF8.GetBytes(source));
     }
 
     private sealed class StoredTokenSet

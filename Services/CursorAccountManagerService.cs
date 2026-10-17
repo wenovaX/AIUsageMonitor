@@ -1,14 +1,12 @@
 using System.Collections.ObjectModel;
-using System.Text;
-using System.Text.Json;
 using AIUsageMonitor.Models;
-using System.Security.Cryptography;
 
 namespace AIUsageMonitor.Services;
 
 public class CursorAccountManagerService
 {
     private const string FileName = "cursor_accounts.json";
+    private const string ProtectionPurpose = "AIUsageMonitor.Cursor.v1";
     private readonly string _filePath;
     private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
 
@@ -30,8 +28,7 @@ public class CursorAccountManagerService
 
         try
         {
-            var json = await File.ReadAllTextAsync(_filePath);
-            var list = JsonSerializer.Deserialize<List<PersistedCursorAccount>>(json);
+            var list = await JsonFileUtility.ReadAsync<List<PersistedCursorAccount>>(_filePath);
             if (list is null)
                 return;
 
@@ -87,8 +84,7 @@ public class CursorAccountManagerService
                 last_updated = a.last_updated
             }).ToList();
 
-            var json = JsonSerializer.Serialize(persisted);
-            await File.WriteAllTextAsync(_filePath, json);
+            await JsonFileUtility.WriteAsync(_filePath, persisted);
         }
         catch (Exception ex)
         {
@@ -121,6 +117,8 @@ public class CursorAccountManagerService
             existing.context_reset_date = account.context_reset_date;
             existing.context_bottom_hit = account.context_bottom_hit;
             existing.last_updated = DateTime.Now;
+            existing.HasError = account.HasError;
+            existing.LastErrorMessage = account.LastErrorMessage;
             RemoveDuplicateAccounts(existing);
         }
         else
@@ -131,8 +129,8 @@ public class CursorAccountManagerService
             Accounts.Add(account);
         }
 
-        _ = SaveAccountsAsync();
         SortAccounts();
+        _ = SaveAccountsAsync();
     }
 
     private static bool IsSameAccount(CursorAccount existing, CursorAccount incoming)
@@ -165,7 +163,8 @@ public class CursorAccountManagerService
     /// </summary>
     public void SortAccounts()
     {
-        if (Accounts.Count <= 1) return;
+        if (Accounts.Count <= 1)
+            return;
 
         var sorted = Accounts.OrderByDescending(a => a.MonthlyUsedPercent)
                             .ThenByDescending(a => a.context_usage_percent)
@@ -179,8 +178,6 @@ public class CursorAccountManagerService
                 Accounts.Move(oldIndex, i);
             }
         }
-
-        _ = SaveAccountsAsync();
     }
 
     /// <summary>
@@ -198,26 +195,13 @@ public class CursorAccountManagerService
 
     private static string Protect(string? plain)
     {
-        if (string.IsNullOrWhiteSpace(plain))
-            return string.Empty;
-
         try
         {
-            using var aes = Aes.Create();
-            aes.Key = GetStableKey();
-            aes.GenerateIV();
-            aes.Mode = CipherMode.CBC;
-            aes.Padding = PaddingMode.PKCS7;
-
-            using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-            var plainBytes = Encoding.UTF8.GetBytes(plain);
-            var cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
-
-            return $"enc1:{Convert.ToBase64String(aes.IV)}:{Convert.ToBase64String(cipherBytes)}";
+            return LocalDataProtector.Protect(plain, ProtectionPurpose);
         }
         catch
         {
-            return plain;
+            return plain ?? string.Empty;
         }
     }
 
@@ -228,36 +212,12 @@ public class CursorAccountManagerService
 
         try
         {
-            if (!cipher.StartsWith("enc1:", StringComparison.Ordinal))
-                return cipher;
-
-            var parts = cipher.Split(':');
-            if (parts.Length != 3)
-                return cipher;
-
-            var iv = Convert.FromBase64String(parts[1]);
-            var encrypted = Convert.FromBase64String(parts[2]);
-
-            using var aes = Aes.Create();
-            aes.Key = GetStableKey();
-            aes.IV = iv;
-            aes.Mode = CipherMode.CBC;
-            aes.Padding = PaddingMode.PKCS7;
-
-            using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-            var plainBytes = decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
-            return Encoding.UTF8.GetString(plainBytes);
+            return LocalDataProtector.Unprotect(cipher, ProtectionPurpose);
         }
         catch
         {
-            return cipher;
+            return cipher ?? string.Empty;
         }
-    }
-
-    private static byte[] GetStableKey()
-    {
-        var source = $"{Environment.MachineName}|{Environment.UserName}|AIUsageMonitor.Cursor.v1";
-        return SHA256.HashData(Encoding.UTF8.GetBytes(source));
     }
 
     private sealed class PersistedCursorAccount

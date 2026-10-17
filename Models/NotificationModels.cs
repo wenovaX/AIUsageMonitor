@@ -1,21 +1,21 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using AIUsageMonitor.Localization;
 
 namespace AIUsageMonitor.Models;
 
 public class NotificationSettings : INotifyPropertyChanged
 {
-    private bool _enableResetNotifications = true;
-    private bool _enableLimitNotifications = true;
-    private int _limitThresholdPercent = 90;
+    private string _languageCode = "system";
     private bool _enableSlackNotifications = false;
     private string _slackWebhookUrl = string.Empty;
-    private string _slackStatus = "Ready";
+    private string _slackStatus = string.Empty;
     private Color _slackStatusColor = Color.FromArgb("#64748b"); // Slate 500
 
     private bool _enableBackgroundRefresh = false;
     private int _refreshIntervalMinutes = 30;
+    private int _maxConcurrentRefreshes = 2;
 
     public bool EnableBackgroundRefresh
     {
@@ -26,25 +26,42 @@ public class NotificationSettings : INotifyPropertyChanged
     public int RefreshIntervalMinutes
     {
         get => _refreshIntervalMinutes;
-        set { _refreshIntervalMinutes = value; OnPropertyChanged(); }
+        set { _refreshIntervalMinutes = value; OnPropertyChanged(); OnPropertyChanged(nameof(RefreshIntervalDisplay)); }
     }
 
-    public bool EnableResetNotifications
+    public int MaxConcurrentRefreshes
     {
-        get => _enableResetNotifications;
-        set { _enableResetNotifications = value; OnPropertyChanged(); }
+        get => _maxConcurrentRefreshes;
+        set
+        {
+            var normalizedValue = Math.Clamp(value, 1, 5);
+            if (_maxConcurrentRefreshes == normalizedValue)
+                return;
+
+            _maxConcurrentRefreshes = normalizedValue;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MaxConcurrentRefreshesDisplay));
+            OnPropertyChanged(nameof(CanDecreaseMaxConcurrentRefreshes));
+            OnPropertyChanged(nameof(CanIncreaseMaxConcurrentRefreshes));
+        }
     }
 
-    public bool EnableLimitNotifications
-    {
-        get => _enableLimitNotifications;
-        set { _enableLimitNotifications = value; OnPropertyChanged(); }
-    }
+    [JsonIgnore]
+    public bool CanDecreaseMaxConcurrentRefreshes => MaxConcurrentRefreshes > 1;
 
-    public int LimitThresholdPercent
+    [JsonIgnore]
+    public bool CanIncreaseMaxConcurrentRefreshes => MaxConcurrentRefreshes < 5;
+
+    [JsonIgnore]
+    public string RefreshIntervalDisplay => LocalizationManager.Format("app.refresh_interval_value", RefreshIntervalMinutes);
+
+    [JsonIgnore]
+    public string MaxConcurrentRefreshesDisplay => LocalizationManager.Format("settings.refresh_concurrency_value", MaxConcurrentRefreshes);
+
+    public string LanguageCode
     {
-        get => _limitThresholdPercent;
-        set { _limitThresholdPercent = value; OnPropertyChanged(); }
+        get => _languageCode;
+        set { _languageCode = value; OnPropertyChanged(); }
     }
 
     public bool EnableSlackNotifications
@@ -62,7 +79,7 @@ public class NotificationSettings : INotifyPropertyChanged
     [JsonIgnore]
     public string SlackStatus
     {
-        get => _slackStatus;
+        get => string.IsNullOrEmpty(_slackStatus) ? LocalizationManager.Text("notifications.status_ready") : _slackStatus;
         set { _slackStatus = value; OnPropertyChanged(); }
     }
 
@@ -77,7 +94,7 @@ public class NotificationSettings : INotifyPropertyChanged
     private bool _enableScheduledAlerts = false;
     private string _slackBotToken = string.Empty;
     private string _slackChannelId = string.Empty;
-    private string _scheduledStatus = "Ready";
+    private string _scheduledStatus = string.Empty;
     private Color _scheduledStatusColor = Color.FromArgb("#64748b");
 
     public bool EnableScheduledAlerts
@@ -101,7 +118,7 @@ public class NotificationSettings : INotifyPropertyChanged
     [JsonIgnore]
     public string ScheduledStatus
     {
-        get => _scheduledStatus;
+        get => string.IsNullOrEmpty(_scheduledStatus) ? LocalizationManager.Text("notifications.status_ready") : _scheduledStatus;
         set { _scheduledStatus = value; OnPropertyChanged(); }
     }
 

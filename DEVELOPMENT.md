@@ -17,16 +17,27 @@ Actual product usage and account switching remain in Google, ChatGPT/Codex, and 
 - .NET MAUI, primarily targeting Windows
 - WinUI 3 and WebView2 on Windows
 - `H.NotifyIcon` for tray integration
-- `Microsoft.Data.Sqlite` for reading Cursor's local state database
+- `Microsoft.Data.Sqlite` with SQLitePCLRaw 3 and SourceGear native SQLite builds for Cursor's local state database
 
 ## Core Areas
 
-- `MainPage.xaml` / `MainPage.xaml.cs`: dashboard UI, refresh queues, and account workflows
+- `MainPage.xaml` / `MainPage.xaml.cs`: dashboard shell, navigation, refresh queues, and account workflows
+- `Views/*TabView.xaml`: provider, settings, notification, and about tab content
+- `Controls/AccountCardHeaderView.xaml`: shared account identity and refresh-status header
+- `Resources/Styles/MainPageResources.xaml`: dashboard-specific styles and converters
 - `Services/*ApiService.cs`: provider requests and response parsing
 - `Services/*AccountManagerService.cs`: account collections and persistence
 - `Services/TokenStorageService.cs`: encrypted monitoring-token persistence
 - `Services/AppDataPaths.cs`: executable-local paths and legacy migration
 - `PlatformImplementations/WindowsController.cs`: window, tray, and shutdown behavior
+
+## UI Structure
+
+- `MainPage` owns the navigation shell and a single tab-content host. Tab views are created on first use and cached, so switching tabs preserves their view state without constructing every tab at startup.
+- Google, Codex, and Cursor account grids use responsive `CollectionView` layouts for item virtualization. The settings model catalog and account-visibility picker also use `CollectionView`.
+- Settings model groups are synchronized in place so toggling a model does not replace the collection and reset its scroll position.
+- Short, bounded quota lists inside each account card intentionally remain `BindableLayout` collections; they do not need nested scrolling or a second virtualized list.
+- Shared account identity and status presentation lives in `AccountCardHeaderView` rather than being duplicated across provider cards.
 
 ## Local Data Boundary
 

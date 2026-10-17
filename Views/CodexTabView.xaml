@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MainPageTabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:AIUsageMonitor.Models"
+             xmlns:converters="clr-namespace:AIUsageMonitor.Converters"
+             xmlns:controls="clr-namespace:AIUsageMonitor.Controls"
+             xmlns:loc="clr-namespace:AIUsageMonitor.Localization"
+             xmlns:local="clr-namespace:AIUsageMonitor"
+             xmlns:views="clr-namespace:AIUsageMonitor.Views"
+             x:Class="AIUsageMonitor.Views.CodexTabView" x:Name="TabRoot" x:DataType="local:MainPage">
+        <CollectionView Margin="20" ItemsSource="{Binding CodexAccounts}" SelectionMode="None">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical" HorizontalItemSpacing="5" VerticalItemSpacing="5">
+                    <GridItemsLayout.Span>
+                        <Binding Path="AccountCardsPerRow" Source="{x:Reference TabRoot}" x:DataType="views:MainPageTabView" />
+                    </GridItemsLayout.Span>
+                </GridItemsLayout>
+            </CollectionView.ItemsLayout>
+            <CollectionView.Header>
+                <Border IsVisible="{Binding HasNoCodexAccounts}" HorizontalOptions="Center" MaximumWidthRequest="440" Margin="0,0,0,11" BackgroundColor="{StaticResource Slate800}" StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" Padding="24">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="{loc:Loc Key=dashboard.codex_empty_title}" FontSize="16" FontAttributes="Bold" TextColor="{StaticResource Slate50}" HorizontalTextAlignment="Center" />
+                        <Label Text="{loc:Loc Key=dashboard.codex_empty_detail}" FontSize="12" TextColor="{StaticResource Slate400}" HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </Border>
+            </CollectionView.Header>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:CodexAccount">
+                    <Border StrokeShape="RoundRectangle 8" StrokeThickness="1" Stroke="{StaticResource Slate700}" BackgroundColor="{StaticResource Slate800}" VerticalOptions="Start">
+                        <Border.Shadow><Shadow Brush="Black" Offset="0,3" Radius="8" Opacity="0.22" /></Border.Shadow>
+                        <Grid RowDefinitions="Auto, Auto, Auto">
+                            <!-- Card Header -->
+                            <VerticalStackLayout>
+                                <!-- Avatar and Name/Email -->
+                    <controls:AccountCardHeaderView
+                        Account="{Binding .}"
+                        DisplayName="{Binding DisplayName}"
+                        DisplayEmail="{Binding DisplayEmail}"
+                        AvatarText="{Binding DisplayName, Converter={StaticResource AnonymousAvatarConverter}}"
+                        IsAnonymous="{Binding IsAnonymous}"
+                        IsRefreshing="{Binding IsRefreshing}"
+                        IsRefreshQueued="{Binding IsRefreshQueued}"
+                        HasError="{Binding HasError}"
+                        ErrorTapped="OnErrorIconTapped" />
+
+                                <!-- Actions & Plan -->
+                                <Grid ColumnDefinitions="Auto, *, Auto" Padding="14,0" BackgroundColor="{StaticResource Slate900}">
+                                    <HorizontalStackLayout Grid.Column="0" Spacing="0" VerticalOptions="Center">
+                                        <Border Style="{StaticResource IconButtonStyle}" WidthRequest="24" HeightRequest="24" StrokeShape="RoundRectangle 4" ToolTipProperties.Text="{loc:Loc Key=dashboard.refresh_account_tooltip}">
+                                            <Border.GestureRecognizers><TapGestureRecognizer Tapped="OnRefreshCodexAccountClicked" CommandParameter="{Binding .}" /></Border.GestureRecognizers>
+                                            <Label Text="↻" TextColor="{StaticResource Slate400}" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+
+                                    <Label Grid.Column="2" Text="{Binding PlanDisplay}" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource Amber500}" VerticalOptions="Center" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <!-- Usage Data (Middle Area) -->
+                            <VerticalStackLayout Grid.Row="1" Margin="0,0,0,5" Padding="14,10,14,0" Spacing="5">
+
+                                <!-- Primary Window (main usage gauge) -->
+                                <VerticalStackLayout Spacing="2">
+                                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                                        <Label Text="{Binding primaryWindowLabel}" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                        <Border Grid.Column="1" IsVisible="{Binding HasUsageLimitBadge}" BackgroundColor="#1aef4444" StrokeThickness="0" StrokeShape="RoundRectangle 4" Padding="6,2">
+                                            <Label Text="{Binding UsageLimitBadgeText}" FontSize="8" FontAttributes="Bold" TextColor="{StaticResource Rose500}" VerticalOptions="Center" />
+                                        </Border>
+                                    </Grid>
+                                    <Grid HeightRequest="26" BackgroundColor="{StaticResource Slate700}">
+                                        <ProgressBar ScaleY="6" Progress="{Binding EffectiveRemainingPercent, Converter={StaticResource PercentageConverter}}"
+                                                     ProgressColor="{Binding EffectiveRemainingPercent, Converter={StaticResource PercentageColorConverter}}"
+                                                     BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                        <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                            <Label Text="{Binding PrimaryStatusText}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                            <Label Grid.Column="2" Text="{Binding EffectiveRemainingPercent, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                        </Grid>
+                                    </Grid>
+                                </VerticalStackLayout>
+
+                                <!-- Secondary Window (gauge) -->
+                                <VerticalStackLayout Spacing="3" IsVisible="{Binding HasSecondaryWindow}">
+                                    <Label Text="{Binding SecondaryResetHeader}" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" TextTransform="Uppercase" />
+                                    <Grid HeightRequest="26" BackgroundColor="{StaticResource Slate700}">
+                                        <ProgressBar ScaleY="6" Progress="{Binding SecondaryRemainingPercent, Converter={StaticResource PercentageConverter}}"
+                                                     ProgressColor="{Binding SecondaryRemainingPercent, Converter={StaticResource PercentageColorConverter}}"
+                                                     BackgroundColor="{StaticResource Slate700}" Opacity="0.4" />
+                                        <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10" Padding="12,0" VerticalOptions="Center">
+                                            <Label Text="{Binding SecondaryStatusText}" FontSize="9" TextColor="{StaticResource Slate400}" VerticalOptions="Center" />
+                                            <Label Grid.Column="2" Text="{Binding SecondaryRemainingPercent, StringFormat='{0}%'}" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Sky400}" VerticalOptions="Center" />
+                                        </Grid>
+                                    </Grid>
+                                </VerticalStackLayout>
+
+                                <!-- Promo Message -->
+                                <Border BackgroundColor="#1a7dd3fc" StrokeShape="RoundRectangle 6" StrokeThickness="0" Padding="8,6" Margin="0,2,0,0" IsVisible="{Binding HasPromoMessage}">
+                                    <Label Text="{Binding PromoMessage}" FontSize="9" TextColor="{StaticResource Sky400}" LineBreakMode="WordWrap" />
+                                </Border>
+
+                                <!-- Credits -->
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <Label Text="{loc:Loc Key=codex.credits}" FontSize="9" FontAttributes="Bold" TextColor="{StaticResource Slate500}" VerticalOptions="Center" />
+                                    <Label Grid.Column="1" Text="{Binding CreditsDisplay}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource Emerald500}" VerticalOptions="Center" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <!-- Bottom Button -->
+                            <Button Grid.Row="2" Text="{loc:Loc Key=common.remove_account}" Clicked="OnDeleteCodexAccountClicked" CommandParameter="{Binding id}"
+                                    Style="{StaticResource RemoveButtonStyle}"
+                                    FontSize="10" HorizontalOptions="Fill" HeightRequest="32" Padding="0"
+                                    CornerRadius="0" VerticalOptions="End" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+</views:MainPageTabView>

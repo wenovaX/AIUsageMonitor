@@ -18,16 +18,27 @@ provider endpoint를 호출한 뒤 반환된 사용량 상태를 화면에 표�
 - .NET MAUI, 주 대상은 Windows
 - Windows의 WinUI 3 및 WebView2
 - 트레이 연동용 `H.NotifyIcon`
-- Cursor 로컬 상태 DB 읽기용 `Microsoft.Data.Sqlite`
+- Cursor 로컬 상태 DB 읽기용 `Microsoft.Data.Sqlite`, SQLitePCLRaw 3, SourceGear native SQLite
 
 ## 주요 영역
 
-- `MainPage.xaml` / `MainPage.xaml.cs`: 대시보드 UI, 새로고침 큐, 계정 workflow
+- `MainPage.xaml` / `MainPage.xaml.cs`: 대시보드 shell, navigation, 새로고침 큐, 계정 workflow
+- `Views/*TabView.xaml`: provider, 설정, 알림, 정보 탭 콘텐츠
+- `Controls/AccountCardHeaderView.xaml`: 계정 정보와 새로고침 상태 공통 header
+- `Resources/Styles/MainPageResources.xaml`: 대시보드 전용 style과 converter
 - `Services/*ApiService.cs`: provider 요청과 응답 parsing
 - `Services/*AccountManagerService.cs`: 계정 collection과 persistence
 - `Services/TokenStorageService.cs`: 암호화된 모니터링 토큰 저장
 - `Services/AppDataPaths.cs`: 실행 파일 기준 local path와 legacy migration
 - `PlatformImplementations/WindowsController.cs`: window, tray, shutdown 처리
+
+## UI 구조
+
+- `MainPage`는 navigation shell과 단일 탭 콘텐츠 host를 관리합니다. 탭 화면은 처음 선택될 때 생성하고 이후 재사용하므로, 시작 시 모든 탭을 만들지 않으면서 탭 전환 후에도 화면 상태를 유지합니다.
+- Google, Codex, Cursor 계정 목록은 반응형 `CollectionView`를 사용해 항목을 가상화합니다. 설정의 모델 목록과 계정 표시 선택 목록도 `CollectionView`를 사용합니다.
+- 모델 설정은 기존 그룹 collection을 유지한 채 항목을 동기화해, 토글할 때 collection 교체로 스크롤 위치가 초기화되지 않도록 합니다.
+- 계정 카드 안의 짧고 개수가 제한된 quota 목록은 중첩 스크롤을 만들지 않도록 `BindableLayout`을 유지합니다. 이 목록에는 별도 가상화가 필요하지 않습니다.
+- 계정 정보와 상태 표시는 provider별 카드에 중복 구현하지 않고 `AccountCardHeaderView`에서 공유합니다.
 
 ## 로컬 데이터 경계
 

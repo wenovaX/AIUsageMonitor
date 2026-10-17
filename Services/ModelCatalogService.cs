@@ -25,8 +25,11 @@ public class ModelCatalogService
     private bool _isInternalChange;
     private bool _suspendCatalogChanged;
     private bool _hasPendingCatalogChanged;
+    private HashSet<string> _availableModelNames = new(StringComparer.OrdinalIgnoreCase);
 
     public ObservableCollection<DiscoveredModelEntry> Models { get; } = new();
+    public bool HasAvailabilitySnapshot { get; private set; }
+    public int MissingModelCount => HasAvailabilitySnapshot ? Models.Count(model => model.IsMissing) : 0;
 
     public event EventHandler? CatalogChanged;
 
@@ -85,20 +88,13 @@ public class ModelCatalogService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        if (discoveredNames.Count == 0)
+            return false;
+
+        _availableModelNames = discoveredNames;
+        HasAvailabilitySnapshot = true;
+
         var updated = Models.Select(Clone).ToList();
-
-        foreach (var defaultName in DefaultDisplayOrder)
-        {
-            if (updated.Any(model => string.Equals(model.DisplayName, defaultName, StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            updated.Add(new DiscoveredModelEntry
-            {
-                DisplayName = defaultName,
-                Enabled = true,
-                IsAvailable = discoveredNames.Contains(defaultName)
-            });
-        }
 
         var existingNames = updated
             .Select(model => model.DisplayName)
@@ -139,13 +135,27 @@ public class ModelCatalogService
         {
             DisplayName = name,
             Enabled = true,
-            IsAvailable = true
+            IsAvailable = !HasAvailabilitySnapshot || _availableModelNames.Contains(name)
         }).ToList();
 
-        if (HasSameModelState(defaults))
+        if (HasSameModelState(defaults, includeAvailability: HasAvailabilitySnapshot))
             return;
 
         ApplyModels(defaults);
+    }
+
+    public int RemoveMissingModels()
+    {
+        if (!HasAvailabilitySnapshot)
+            return 0;
+
+        var availableModels = Models.Where(model => model.IsAvailable).ToList();
+        var removedCount = Models.Count - availableModels.Count;
+        if (removedCount == 0)
+            return 0;
+
+        ApplyModels(availableModels);
+        return removedCount;
     }
 
     /// <summary>
@@ -176,8 +186,7 @@ public class ModelCatalogService
         {
             if (File.Exists(_configPath))
             {
-                var json = File.ReadAllText(_configPath);
-                var config = JsonSerializer.Deserialize<DiscoveredModelConfig>(json);
+                var config = JsonFileUtility.Read<DiscoveredModelConfig>(_configPath);
                 if (config is not null && config.Models.Count > 0)
                 {
                     ApplyModels(OrderModels(Sanitize(config.Models)), saveAfter: false);
@@ -214,8 +223,7 @@ public class ModelCatalogService
                 Models = Models.Select(Clone).ToList()
             };
 
-            var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_configPath, json);
+            JsonFileUtility.Write(_configPath, config, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (Exception ex)
         {
